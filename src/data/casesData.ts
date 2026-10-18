@@ -1,8 +1,72 @@
 import type { TestCaseDossier } from "../types";
 
 export const SANITIZED_TEST_CASES: TestCaseDossier[] = [
+  // ==========================================
+  // Rumpun Aplikasi Mahasiswa (App-A): CASE-01 s/d CASE-04
+  // ==========================================
   {
     caseId: "CASE-01",
+    targetApp: "App-A",
+    targetAppNameSanitized: "App-A (Aplikasi Mahasiswa)",
+    controlId: "MASTG-TEST-0287",
+    masvsCategory: "MASVS-STORAGE",
+    testMethod: "DAST",
+    isOverlappingControl: false,
+    weaknessTaxonomy: {
+      cweId: "CWE-312",
+      cweTitle: "Cleartext Storage of Sensitive Information",
+      masweId: "MASWE-0006",
+      masweTitle: "Storing Sensitive Data in Cleartext"
+    },
+    findingTitle: "Penyimpanan Token Sesi Aktif dan Identitas Pengguna Tanpa Enkripsi pada SharedPreferences",
+    rootCause: "Aplikasi menyimpan token autentikasi sesi aktif (JWT bearer token) dan data identitas pengguna ke dalam file XML SharedPreferences standar tanpa menggunakan pengamanan Android KeyStore maupun pustaka EncryptedSharedPreferences.",
+    stepByStepReproduction: [
+      {
+        stepNumber: 1,
+        description: "Buka aplikasi App-A, lakukan login menggunakan kredensial mahasiswa hingga berhasil masuk ke beranda.",
+        commandOrAction: "Aksi Pengguna: Login akun mahasiswa",
+        observedEvidence: "Sesi login aktif berhasil dibuat dan disimpan oleh aplikasi."
+      },
+      {
+        stepNumber: 2,
+        description: "Periksa direktori data internal aplikasi di sandboxing sistem Android menggunakan shell ADB.",
+        commandOrAction: "adb shell su -c \"cat /data/data/org.target.appa/shared_prefs/FlutterSharedPreferences.xml\"",
+        observedEvidence: "Ditemukan file FlutterSharedPreferences.xml yang memuat token otentikasi 'flutter.access_token', identitas 'flutter.user_id', dan tanggal kedaluwarsa token dalam bentuk teks polos (plaintext)."
+      },
+      {
+        stepNumber: 3,
+        description: "Salin nilai token tersebut dan kirimkan permintaan mandiri melalui cURL untuk mengakses data akademik mahasiswa dari server backend.",
+        commandOrAction: "curl -H \"Authorization: Bearer eyJhbGci...\" https://api.target.internal/v1/student/profile",
+        observedEvidence: "Server menerima token tersebut dan langsung mengembalikan seluruh riwayat data mahasiswa tanpa meminta kata sandi."
+      }
+    ],
+    operationalImpact: {
+      threatActor: "Pihak lain yang memegang fisik ponsel secara langsung, pembaca cadangan data lokal (unencrypted backup), atau aplikasi berbahaya yang berjalan pada perangkat yang telah di-root.",
+      prerequisites: "Akses ke file penyimpanan internal atau cadangan data aplikasi.",
+      consequences: "Pengambilalihan akun secara penuh (session hijacking); penyerang dapat bertindak atas nama mahasiswa di server akademik tanpa perlu mengetahui kata sandi korban."
+    },
+    evidenceSnippets: [
+      {
+        title: "Cuplikan File FlutterSharedPreferences.xml",
+        language: "xml",
+        content: `<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="flutter.access_token">eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxODcyMjEwOTYiLCJuYW1lIjoiW1JFREFDVEVEXSIsImlhdCI6MTcwNDAxOTIwMCwiZXhwIjoxNzA0MTA1NjAwfQ.[SIGNATURE_TOKEN]</string>
+    <string name="flutter.user_id">ID-88492019</string>
+    <string name="flutter.tokenExpiry">2026-12-31T23:59:59Z</string>
+    <string name="flutter.user_nim">187221096</string>
+</map>`
+      }
+    ],
+    images: [
+      {
+        caption: "Gambar Bukti: File FlutterSharedPreferences.xml pada App-A yang menyimpan token JWT dan kredensial pengguna secara teks biasa (plaintext)",
+        url: "/evidence/case_img_24.png"
+      }
+    ]
+  },
+  {
+    caseId: "CASE-02",
     targetApp: "App-A",
     targetAppNameSanitized: "App-A (Aplikasi Mahasiswa)",
     controlId: "MASTG-TEST-0203",
@@ -74,68 +138,60 @@ export const SANITIZED_TEST_CASES: TestCaseDossier[] = [
     ]
   },
   {
-    caseId: "CASE-02",
+    caseId: "CASE-03",
     targetApp: "App-A",
     targetAppNameSanitized: "App-A (Aplikasi Mahasiswa)",
-    controlId: "MASTG-TEST-0287",
+    controlId: "MASTG-TEST-0231",
     masvsCategory: "MASVS-STORAGE",
-    testMethod: "DAST",
-    isOverlappingControl: false,
+    testMethod: "SAST",
+    isOverlappingControl: true,
     weaknessTaxonomy: {
-      cweId: "CWE-312",
-      cweTitle: "Cleartext Storage of Sensitive Information",
-      masweId: "MASWE-0006",
-      masweTitle: "Storing Sensitive Data in Cleartext"
+      cweId: "CWE-215",
+      cweTitle: "Insertion of Sensitive Information Into Debugging Code",
+      masweId: "MASWE-0005",
+      masweTitle: "Insertion of Sensitive Data into Logs"
     },
-    findingTitle: "Penyimpanan Token Sesi Aktif dan Identitas Pengguna Tanpa Enkripsi pada SharedPreferences",
-    rootCause: "Aplikasi menyimpan token autentikasi sesi aktif (JWT bearer token) dan data identitas pengguna ke dalam file XML SharedPreferences standar tanpa menggunakan pengamanan Android KeyStore maupun pustaka EncryptedSharedPreferences.",
+    findingTitle: "Teks Penanda Variabel Sensitif dan Label Kredensial Tertinggal pada Biner Native (libcore_engine.so)",
+    rootCause: "Proses pembangunan (build) rilis produksi aplikasi belum menerapkan teknik penyusutan kode (code shrinking) dan pembersihan simbol (string stripping) secara tuntas pada biner mesin Flutter (libapp.so). Akibatnya, teks penanda internal (NIM_MHS, ID_PENGGUNA, Hash Password Preference :) yang digunakan pengembang saat masa penulisan program tetap tertanam di dalam segmen memori statis biner rilis.",
     stepByStepReproduction: [
       {
         stepNumber: 1,
-        description: "Buka aplikasi App-A, lakukan login menggunakan kredensial mahasiswa hingga berhasil masuk ke beranda.",
-        commandOrAction: "Aksi Pengguna: Login akun mahasiswa",
-        observedEvidence: "Sesi login aktif berhasil dibuat dan disimpan oleh aplikasi."
+        description: "Ekstraksi berkas pustaka biner native arsitektur x86_64 dari paket APK rilis:",
+        commandOrAction: "unzip -p App-A.apk lib/x86_64/libapp.so > libcore_engine.so",
+        observedEvidence: "Biner native libapp.so (disimpan sebagai libcore_engine.so) berhasil diekstraksi."
       },
       {
         stepNumber: 2,
-        description: "Periksa direktori data internal aplikasi di sandboxing sistem Android menggunakan shell ADB.",
-        commandOrAction: "adb shell su -c \"cat /data/data/org.target.appa/shared_prefs/FlutterSharedPreferences.xml\"",
-        observedEvidence: "Ditemukan file FlutterSharedPreferences.xml yang memuat token otentikasi 'flutter.access_token', identitas 'flutter.user_id', dan tanggal kedaluwarsa token dalam bentuk teks polos (plaintext)."
-      },
-      {
-        stepNumber: 3,
-        description: "Salin nilai token tersebut dan kirimkan permintaan mandiri melalui cURL untuk mengakses data akademik mahasiswa dari server backend.",
-        commandOrAction: "curl -H \"Authorization: Bearer eyJhbGci...\" https://api.target.internal/v1/student/profile",
-        observedEvidence: "Server menerima token tersebut dan langsung mengembalikan seluruh riwayat data mahasiswa tanpa meminta kata sandi."
+        description: "Ekstraksi teks statis (string literal) dari biner mesin untuk mendeteksi penanda parameter internal:",
+        commandOrAction: "strings libcore_engine.so | grep -iE 'NIM_MHS|ID_PENGGUNA|Hash Password'",
+        observedEvidence: "Ditemukan string literal statis 'NIM_MHS', 'ID_PENGGUNA', dan 'Hash Password Preference :' di dalam biner terkompilasi."
       }
     ],
     operationalImpact: {
-      threatActor: "Pihak lain yang memegang fisik ponsel secara langsung, pembaca cadangan data lokal (unencrypted backup), atau aplikasi berbahaya yang berjalan pada perangkat yang telah di-root.",
-      prerequisites: "Akses ke file penyimpanan internal atau cadangan data aplikasi.",
-      consequences: "Pengambilalihan akun secara penuh (session hijacking); penyerang dapat bertindak atas nama mahasiswa di server akademik tanpa perlu mengetahui kata sandi korban."
+      threatActor: "Pihak luar yang melakukan rekayasa balik (reverse engineering) luring (offline) terhadap berkas APK rilis produksi.",
+      prerequisites: "Memiliki berkas APK aplikasi produksi.",
+      consequences: "• Tidak memaparkan data pribadi individu secara langsung, karena berkas biner instalasi APK tidak menyimpan data pengguna dinamis.\n• Membuka petunjuk struktural (architectural footprint) yang membeberkan penamaan variabel internal dan parameter autentikasi.\n• Menjadi penanda statis yang berkorelasi dengan ditemukannya pencatatan data pribadi dan hash kata sandi ke logcat saat pengujian dinamis App-A Aplikasi Mahasiswa (MASTG-TEST-0203)."
     },
     evidenceSnippets: [
       {
-        title: "Cuplikan File FlutterSharedPreferences.xml",
-        language: "xml",
-        content: `<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
-<map>
-    <string name="flutter.access_token">eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxODcyMjEwOTYiLCJuYW1lIjoiW1JFREFDVEVEXSIsImlhdCI6MTcwNDAxOTIwMCwiZXhwIjoxNzA0MTA1NjAwfQ.[SIGNATURE_TOKEN]</string>
-    <string name="flutter.user_id">ID-88492019</string>
-    <string name="flutter.tokenExpiry">2026-12-31T23:59:59Z</string>
-    <string name="flutter.user_nim">187221096</string>
-</map>`
+        title: "Keluaran Ekstraksi String pada Biner Mesin",
+        language: "plaintext",
+        content: `$ strings libcore_engine.so | grep -iE 'nim_mhs|id_pengguna|hash password'
+NIM_MHS
+ID_PENGGUNA
+Hash Password Preference :
+user_auth_vault_token`
       }
     ],
     images: [
       {
-        caption: "Gambar Bukti: File FlutterSharedPreferences.xml pada App-A yang menyimpan token JWT dan kredensial pengguna secara teks biasa (plaintext)",
-        url: "/evidence/case_img_24.png"
+        caption: "Gambar Bukti: Ekstraksi teks string label penanda identitas dan kredensial pada biner native libapp.so App-A",
+        url: "/evidence/case_img_30.png"
       }
     ]
   },
   {
-    caseId: "CASE-03",
+    caseId: "CASE-04",
     targetApp: "App-A",
     targetAppNameSanitized: "App-A (Aplikasi Mahasiswa)",
     controlId: "MASTG-TEST-0235",
@@ -198,59 +254,10 @@ export const SANITIZED_TEST_CASES: TestCaseDossier[] = [
       }
     ]
   },
-  {
-    caseId: "CASE-04",
-    targetApp: "App-A",
-    targetAppNameSanitized: "App-A (Aplikasi Mahasiswa)",
-    controlId: "MASTG-TEST-0231",
-    masvsCategory: "MASVS-STORAGE",
-    testMethod: "SAST",
-    isOverlappingControl: true,
-    weaknessTaxonomy: {
-      cweId: "CWE-215",
-      cweTitle: "Insertion of Sensitive Information Into Debugging Code",
-      masweId: "MASWE-0005",
-      masweTitle: "Insertion of Sensitive Data into Logs"
-    },
-    findingTitle: "Teks Penanda Variabel Sensitif dan Label Kredensial Tertinggal pada Biner Native (libcore_engine.so)",
-    rootCause: "Proses pembangunan rilis akhir aplikasi belum menerapkan teknik penyusutan kode (code shrinking) dan pembersihan simbol (string stripping) secara tuntas pada biner mesin Flutter (libapp.so / libcore_engine.so). Akibatnya, teks penanda internal yang digunakan pengembang selama fase penulisan program tetap tertanam permanen di dalam segmen memori biner.",
-    stepByStepReproduction: [
-      {
-        stepNumber: 1,
-        description: "Ekstrak pustaka biner native arsitektur x86_64 dari paket APK rilis.",
-        commandOrAction: "unzip -p App-A.apk lib/x86_64/libapp.so > libcore_engine.so",
-        observedEvidence: "Biner native mesin berhasil diekstrak."
-      },
-      {
-        stepNumber: 2,
-        description: "Jalankan ekstraksi string teks statis untuk menyaring label data dan penanda kredensial internal.",
-        commandOrAction: "strings libcore_engine.so | grep -iE 'NIM_MHS|ID_PENGGUNA|Hash Password'",
-        observedEvidence: "Ditemukan string literal eksplisit seperti 'NIM_MHS', 'ID_PENGGUNA', dan 'Hash Password Preference :' yang tertanam langsung pada biner terkompilasi."
-      }
-    ],
-    operationalImpact: {
-      threatActor: "Peneliti keamanan atau pihak luar yang melakukan analisis rekayasa balik (reverse engineering) terhadap file APK yang diunduh dari publik.",
-      prerequisites: "Memiliki file APK aplikasi produksi.",
-      consequences: "Membocorkan peta struktur kode internal (architectural footprint). Penyerang dapat memakai string tersebut sebagai kata kunci penunjuk arah untuk mempercepat pencarian celah logika dan memahami alur kerja autentikasi aplikasi tanpa perlu membaca seluruh kode mesin yang rumit."
-    },
-    evidenceSnippets: [
-      {
-        title: "Keluaran Ekstraksi String pada Biner Mesin",
-        language: "plaintext",
-        content: `$ strings libcore_engine.so | grep -iE 'nim_mhs|id_pengguna|hash password'
-NIM_MHS
-ID_PENGGUNA
-Hash Password Preference :
-user_auth_vault_token`
-      }
-    ],
-    images: [
-      {
-        caption: "Gambar Bukti: Ekstraksi teks string label penanda identitas dan kredensial pada biner native libapp.so App-A",
-        url: "/evidence/case_img_30.png"
-      }
-    ]
-  },
+
+  // ==========================================
+  // Rumpun Aplikasi Orang Tua (App-B): CASE-05 s/d CASE-06
+  // ==========================================
   {
     caseId: "CASE-05",
     targetApp: "App-B",
@@ -303,11 +310,19 @@ I/flutter ( 5120): GET https://api.target.internal/v2/achievements/list?access-t
     ],
     images: [
       {
-        caption: "Gambar Bukti 1: Logcat App-B yang memaparkan token otorisasi dan respons data prestasi mahasiswa setiap perpindahan menu",
+        caption: "Gambar Bukti 1: Logcat pemaparan URL endpoint beranda (view-ipk) yang memuat parameter access-token aktif dan NIM mahasiswa",
+        url: "/evidence/image_15.png"
+      },
+      {
+        caption: "Gambar Bukti 2: Logcat pemaparan URL endpoint presensi kuliah yang memuat parameter access-token, NIM, dan kode mata kuliah",
+        url: "/evidence/case_img_21.png"
+      },
+      {
+        caption: "Gambar Bukti 3: Logcat App-B yang memaparkan token otorisasi dan respons data prestasi mahasiswa setiap perpindahan menu",
         url: "/evidence/case_img_22.png"
       },
       {
-        caption: "Gambar Bukti 2: Pembuktian eksploitasi nyata (PoC replay attack) menggunakan cURL berbekal token dari logcat untuk menarik data akademik",
+        caption: "Gambar Bukti 4: Pembuktian eksploitasi nyata (PoC replay attack) menggunakan cURL berbekal token dari logcat untuk menarik data akademik",
         url: "/evidence/case_img_23.png"
       }
     ]
@@ -327,25 +342,25 @@ I/flutter ( 5120): GET https://api.target.internal/v2/achievements/list?access-t
       masweTitle: "Insertion of Sensitive Data into Logs"
     },
     findingTitle: "Pesan Galat Otentikasi Eksplisit dan Nama Parameter Form Login Tertinggal pada Biner Native",
-    rootCause: "Belum diterapkannya obfuskasi kode dan pembersihan string secara optimal pada kompilasi biner rilis App-B. Pesan galat penarikan token autentikasi dan nama-nama parameter formulir login masih tertinggal dalam biner native libapp.so.",
+    rootCause: "Proses pembangunan (build) rilis produksi aplikasi belum menerapkan teknik penyusutan kode (code shrinking) dan pembersihan simbol (string stripping) secara optimal pada biner mesin Flutter (libapp.so). Akibatnya, pesan galat penarikan token autentikasi dan nama-nama parameter formulir login yang digunakan selama fase pengembangan tetap tertanam di dalam segmen memori statis biner rilis.",
     stepByStepReproduction: [
       {
         stepNumber: 1,
-        description: "Ekstrak pustaka biner native dari paket APK rilis App-B.",
+        description: "Ekstraksi berkas pustaka biner native arsitektur x86_64 dari paket APK rilis:",
         commandOrAction: "unzip -p App-B.apk lib/x86_64/libapp.so > libcore_parent.so",
-        observedEvidence: "Biner native App-B diekstrak."
+        observedEvidence: "Biner native libapp.so (disimpan sebagai libcore_parent.so) berhasil diekstraksi."
       },
       {
         stepNumber: 2,
-        description: "Lakukan pencarian teks statis untuk memeriksa residu logika autentikasi dan penanganan kesalahan.",
+        description: "Ekstraksi teks statis (string literal) dari biner mesin untuk memeriksa residu logika autentikasi dan penanganan kesalahan:",
         commandOrAction: "strings libcore_parent.so | grep -iE 'LoginForm|photo token|tokenExpiry'",
-        observedEvidence: "Ditemukan string pesan galat eksplisit 'Failed to get photo token:' serta nama parameter penting: 'LoginForm[password]', 'LoginForm[username]', 'access_token', dan 'tokenExpiry'."
+        observedEvidence: "Ditemukan string pesan galat eksplisit 'Failed to get photo token:' serta nama parameter formulir login: 'LoginForm[password]', 'LoginForm[username]', 'access_token', 'tokenExpiry', 'user_nim', dan 'user_name'."
       }
     ],
     operationalImpact: {
-      threatActor: "Penyerang atau analis luar yang membongkar biner aplikasi secara statis.",
-      prerequisites: "Memiliki file APK App-B publik.",
-      consequences: "Memberikan petunjuk berharga mengenai struktur form login dan mekanisme pengelolaan token, mempermudah pembuatan skrip serangan brute-force atau percobaan manipulasi parameter terhadap API backend."
+      threatActor: "Pihak luar yang melakukan rekayasa balik (reverse engineering) luring (offline) terhadap berkas APK rilis produksi.",
+      prerequisites: "Memiliki berkas APK aplikasi produksi.",
+      consequences: "• Tidak memaparkan data pribadi pengguna individual secara langsung, karena berkas biner instalasi APK tidak menampung data pengguna dinamis.\n• Membuka petunjuk struktural (architectural footprint) yang membeberkan struktur parameter formulir autentikasi (LoginForm[...]) dan penanganan token. Informasi ini menjadi penanda statis yang berkorelasi dengan ditemukannya kebocoran token pada pengujian dinamis logcat Aplikasi Orang Tua (MASTG-TEST-0203)."
     },
     evidenceSnippets: [
       {

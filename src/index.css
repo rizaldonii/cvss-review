@@ -727,6 +727,7 @@ body {
   font-size: 0.8rem;
   color: #e2e8f0;
   line-height: 1.4;
+  white-space: pre-line;
 }
 
 .danger-text {
