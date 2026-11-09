@@ -45,6 +45,7 @@ export interface MetricDefinition {
 
 export interface StepReproduction {
   stepNumber: number;
+  testCaseRef?: string; // e.g. "MASTG-TEST-0203 (DAST)" or "MASTG-TEST-0231 (SAST)"
   description: string;
   commandOrAction: string;
   observedEvidence: string;
@@ -52,6 +53,7 @@ export interface StepReproduction {
 
 export interface EvidenceSnippet {
   title: string;
+  testCaseRef?: string;
   language: "bash" | "xml" | "json" | "plaintext";
   content: string;
 }
@@ -59,15 +61,16 @@ export interface EvidenceSnippet {
 export interface EvidenceImage {
   caption: string;
   url: string;
+  testCaseRef?: string;
 }
 
 export interface TestCaseDossier {
-  caseId: string; // e.g. "CASE-01"
+  caseId: string; // "CASE-01" | "CASE-02" | "CASE-03" | "CASE-04"
   targetApp: "App-A" | "App-B";
-  targetAppNameSanitized: string; // "App-A (Aplikasi Mahasiswa)"
-  controlId: string; // e.g. "MASTG-TEST-0203"
+  targetAppNameSanitized: string; // e.g. "App-A (Aplikasi Mahasiswa)"
+  controlId: string; // e.g. "MASTG-TEST-0287" or "MASTG-TEST-0203 + MASTG-TEST-0231"
   masvsCategory: "MASVS-STORAGE" | "MASVS-NETWORK" | "MASVS-CODE";
-  testMethod: "SAST" | "DAST";
+  testMethod: "SAST" | "DAST" | "DAST & SAST" | "SAST & DAST";
   isOverlappingControl: boolean;
   weaknessTaxonomy: {
     cweId: string;

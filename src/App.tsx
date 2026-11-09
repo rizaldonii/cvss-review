@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import type { ReviewerProfile } from "./types";
 import { SANITIZED_TEST_CASES } from "./data/casesData";
 import {
@@ -12,22 +12,22 @@ import { LoginReviewer } from "./views/LoginReviewer";
 import { ReviewWorkspace } from "./views/ReviewWorkspace";
 import { ThankYouView } from "./views/ThankYouView";
 import { AdminView } from "./views/AdminView";
+import { AssessmentGuideModal } from "./components/AssessmentGuideModal";
 
 export const App: React.FC = () => {
-  const [reviewer, setReviewer] = useState<ReviewerProfile | null>(null);
+  const [reviewer, setReviewer] = useState<ReviewerProfile | null>(() => getReviewerProfile());
   const [currentCaseIndex, setCurrentCaseIndex] = useState(0);
   const [isFinished, setIsFinished] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
-  const [completedCaseIds, setCompletedCaseIds] = useState<string[]>([]);
-
-  // Load existing session on initial mount
-  useEffect(() => {
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const [completedCaseIds, setCompletedCaseIds] = useState<string[]>(() => {
     const saved = getReviewerProfile();
-    if (saved) {
-      setReviewer(saved);
-      refreshCompletedCases(saved.name);
-    }
-  }, []);
+    if (!saved) return [];
+    const all = getLocalSubmissions();
+    return all
+      .filter(s => s.reviewerName.trim().toLowerCase() === saved.name.trim().toLowerCase())
+      .map(s => s.caseId);
+  });
 
   const refreshCompletedCases = (name?: string) => {
     const targetName = name || reviewer?.name;
@@ -42,11 +42,6 @@ export const App: React.FC = () => {
       .map(s => s.caseId);
 
     setCompletedCaseIds(matching);
-
-    // If all 6 cases already completed, offer option to view thank you screen
-    if (matching.length >= SANITIZED_TEST_CASES.length) {
-      // Keep user in workspace or allow thank you
-    }
   };
 
   const handleStartReview = (profile: ReviewerProfile) => {
@@ -84,6 +79,7 @@ export const App: React.FC = () => {
         reviewer={reviewer}
         onLogout={handleLogout}
         onOpenAdmin={() => setIsAdminOpen(true)}
+        onOpenGuide={() => setIsGuideOpen(true)}
         currentCaseIndex={currentCaseIndex}
         totalCases={SANITIZED_TEST_CASES.length}
         completedCaseIds={completedCaseIds}
@@ -93,7 +89,10 @@ export const App: React.FC = () => {
       {/* Main View Router */}
       <main className="app-main-content">
         {!reviewer ? (
-          <LoginReviewer onStart={handleStartReview} />
+          <LoginReviewer
+            onStart={handleStartReview}
+            onOpenGuide={() => setIsGuideOpen(true)}
+          />
         ) : isFinished ? (
           <ThankYouView
             reviewer={reviewer}
@@ -112,6 +111,7 @@ export const App: React.FC = () => {
             onCaseChange={handleCaseChange}
             onFinishAllCases={handleFinishAllCases}
             onRefreshCompleted={() => refreshCompletedCases()}
+            onOpenGuide={() => setIsGuideOpen(true)}
           />
         )}
       </main>
@@ -123,6 +123,12 @@ export const App: React.FC = () => {
           onClose={() => setIsAdminOpen(false)}
         />
       )}
+
+      {/* CVSS v3.1 Assessment Guide Modal */}
+      <AssessmentGuideModal
+        isOpen={isGuideOpen}
+        onClose={() => setIsGuideOpen(false)}
+      />
     </div>
   );
 };

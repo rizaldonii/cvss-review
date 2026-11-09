@@ -2,7 +2,8 @@ import type { TestCaseDossier } from "../types";
 
 export const SANITIZED_TEST_CASES: TestCaseDossier[] = [
   // ==========================================
-  // Rumpun Aplikasi Mahasiswa (App-A): CASE-01 s/d CASE-04
+  // CASE-01: App-A (Mahasiswa) - Penyimpanan Data Sensitif Tanpa Enkripsi
+  // Kontrol: MASTG-TEST-0287
   // ==========================================
   {
     caseId: "CASE-01",
@@ -18,32 +19,26 @@ export const SANITIZED_TEST_CASES: TestCaseDossier[] = [
       masweId: "MASWE-0006",
       masweTitle: "Storing Sensitive Data in Cleartext"
     },
-    findingTitle: "Penyimpanan Token Sesi Aktif dan Identitas Pengguna Tanpa Enkripsi pada SharedPreferences",
-    rootCause: "Aplikasi menyimpan token autentikasi sesi aktif (JWT bearer token) dan data identitas pengguna ke dalam file XML SharedPreferences standar tanpa menggunakan pengamanan Android KeyStore maupun pustaka EncryptedSharedPreferences.",
+    findingTitle: "Penyimpanan Data Sensitif dan Kredensial Tanpa Enkripsi pada SharedPreferences",
+    rootCause: "Aplikasi menyimpan token sesi aktif (JWT bearer token) dan data identitas pribadi mahasiswa (NIM, Nama Lengkap, Surel, Program Studi) serta nilai hash kata sandi lokal ke dalam file XML SharedPreferences standar (FlutterSharedPreferences.xml) dalam format teks polos (plaintext) tanpa proteksi kriptografis (seperti Hardware-backed Android KeyStore maupun pustaka EncryptedSharedPreferences).",
     stepByStepReproduction: [
       {
         stepNumber: 1,
-        description: "Buka aplikasi App-A, lakukan login menggunakan kredensial mahasiswa hingga berhasil masuk ke beranda.",
+        description: "Buka aplikasi App-A pada perangkat uji, lakukan proses autentikasi (login) menggunakan kredensial mahasiswa hingga berhasil masuk ke beranda aplikasi.",
         commandOrAction: "Aksi Pengguna: Login akun mahasiswa",
-        observedEvidence: "Sesi login aktif berhasil dibuat dan disimpan oleh aplikasi."
+        observedEvidence: "Sesi autentikasi aktif berhasil terbentuk dan disimpan oleh sistem aplikasi."
       },
       {
         stepNumber: 2,
-        description: "Periksa direktori data internal aplikasi di sandboxing sistem Android menggunakan shell ADB.",
-        commandOrAction: "adb shell su -c \"cat /data/data/org.target.appa/shared_prefs/FlutterSharedPreferences.xml\"",
-        observedEvidence: "Ditemukan file FlutterSharedPreferences.xml yang memuat token otentikasi 'flutter.access_token', identitas 'flutter.user_id', dan tanggal kedaluwarsa token dalam bentuk teks polos (plaintext)."
-      },
-      {
-        stepNumber: 3,
-        description: "Salin nilai token tersebut dan kirimkan permintaan mandiri melalui cURL untuk mengakses data akademik mahasiswa dari server backend.",
-        commandOrAction: "curl -H \"Authorization: Bearer eyJhbGci...\" https://api.target.internal/v1/student/profile",
-        observedEvidence: "Server menerima token tersebut dan langsung mengembalikan seluruh riwayat data mahasiswa tanpa meminta kata sandi."
+        description: "Periksa direktori data internal aplikasi di sandboxing sistem operasi Android menggunakan Android Debug Bridge (ADB) dengan hak akses root.",
+        commandOrAction: "adb shell su -c \"cat /data/data/id.ac.unair.kampuskitamahasiswa/shared_prefs/FlutterSharedPreferences.xml\"",
+        observedEvidence: "Ditemukan file FlutterSharedPreferences.xml yang memuat token otentikasi JWT ('flutter.access_token'), data identitas mahasiswa (NIM, Nama, Surel, Program Studi), serta 'flutter.validPassword' (hash kata sandi lokal) dalam bentuk teks biasa (plaintext)."
       }
     ],
     operationalImpact: {
-      threatActor: "Pihak lain yang memegang fisik ponsel secara langsung, pembaca cadangan data lokal (unencrypted backup), atau aplikasi berbahaya yang berjalan pada perangkat yang telah di-root.",
-      prerequisites: "Akses ke file penyimpanan internal atau cadangan data aplikasi.",
-      consequences: "Pengambilalihan akun secara penuh (session hijacking); penyerang dapat bertindak atas nama mahasiswa di server akademik tanpa perlu mengetahui kata sandi korban."
+      threatActor: "Pihak lain yang memegang fisik ponsel secara langsung saat tidak terkunci, penyerang yang mengekstrak berkas cadangan data lokal (unencrypted backup), atau aplikasi berbahaya yang berjalan pada perangkat Android yang telah di-root.",
+      prerequisites: "Akses fisik ke perangkat ponsel atau akses terhadap direktori penyimpanan data internal aplikasi / cadangan lokal.",
+      consequences: "Kerentanan ini membuka potensi risiko pengambilalihan akun (account takeover / session hijacking) apabila token sesi aktif yang belum kedaluwarsa diekstraksi oleh penyerang, serta potensi upaya pemecahan kata sandi secara luring (offline cracking) terhadap nilai hash kata sandi lokal yang tersimpan di dalam sandbox data aplikasi."
     },
     evidenceSnippets: [
       {
@@ -65,13 +60,18 @@ export const SANITIZED_TEST_CASES: TestCaseDossier[] = [
       }
     ]
   },
+
+  // ==========================================
+  // CASE-02: App-A (Mahasiswa) - Kebocoran Informasi Sensitif Melalui Logging
+  // Kontrol: MASTG-TEST-0203 (DAST) + MASTG-TEST-0231 (SAST)
+  // ==========================================
   {
     caseId: "CASE-02",
     targetApp: "App-A",
     targetAppNameSanitized: "App-A (Aplikasi Mahasiswa)",
-    controlId: "MASTG-TEST-0203",
+    controlId: "MASTG-TEST-0203 + MASTG-TEST-0231",
     masvsCategory: "MASVS-STORAGE",
-    testMethod: "DAST",
+    testMethod: "DAST & SAST",
     isOverlappingControl: true,
     weaknessTaxonomy: {
       cweId: "CWE-532",
@@ -79,30 +79,47 @@ export const SANITIZED_TEST_CASES: TestCaseDossier[] = [
       masweId: "MASWE-0005",
       masweTitle: "Insertion of Sensitive Data into Logs"
     },
-    findingTitle: "Pencatatan Data Pribadi Mahasiswa dan Hash Password ke Dalam Logcat Android saat Runtime",
-    rootCause: "Pengembang lupa mematikan perintah cetak log konsol (seperti print() atau debugPrint() pada Flutter/Dart) saat merilis aplikasi ke produksi. Ketika pengguna membuka halaman profil atau Kartu Tanda Mahasiswa Elektronik (e-KTM), aplikasi secara otomatis mencetak seluruh objek data respons JSON dari server ke jendela logcat sistem Android pada level Informational (I) dengan tag 'flutter'.",
+    findingTitle: "Kebocoran Informasi Sensitif Melalui Logging (Runtime Logcat & Residu Biner Native)",
+    rootCause: "Terjadi kelemahan tata kelola informasi pada fase rilis produksi aplikasi yang terbukti melalui dua metode evaluasi:\n\n1. Pengujian Dinamis (DAST - MASTG-TEST-0203): Pengembang belum menonaktifkan instruksi cetak log konsol (print() atau debugPrint() pada Flutter) saat merilis aplikasi ke produksi. Ketika pengguna membuka modul Profil atau Kartu Tanda Mahasiswa Elektronik (e-KTM), aplikasi secara otomatis mencetak seluruh objek data respons JSON dari server ke saluran logcat sistem Android pada level Informational (I) dengan tag 'flutter'. Objek log ini memaparkan data pribadi (PII) mahasiswa secara menyeluruh (Nama Lengkap, NIM, Alamat Rumah detail, Tempat & Tanggal Lahir, Email Pribadi, Data Orang Tua/Wali termasuk Nama Ayah, Nama Ibu Kandung, dan Nomor HP), serta nilai 'Hash Password Preference'.\n\n2. Analisis Statis (SAST - MASTG-TEST-0231): Penelusuran statis terhadap biner native libapp.so (arsitektur x86_64) menemukan adanya string literal berupa label penanda data sensitif: 'ID_PENGGUNA', 'NIM_MHS', dan 'Hash Password Preference :'. Keberadaan string ini membuktikan bahwa biner rilis masih menyimpan residu konstruksi teks dari fungsi pencatatan internal, yang berkorelasi langsung dengan variabel data sensitif yang tercetak pada saluran logcat saat runtime.",
     stepByStepReproduction: [
       {
         stepNumber: 1,
-        description: "Buka aplikasi App-A pada perangkat uji/emulator yang terhubung dengan Android Debug Bridge (ADB), lalu jalankan pemantauan logcat secara real-time.",
-        commandOrAction: "adb logcat | grep -iE 'flutter|target-institution'",
-        observedEvidence: "Aliran log sistem Android siap memantau aktivitas aplikasi."
+        testCaseRef: "MASTG-TEST-0203 (DAST)",
+        description: "Hubungkan perangkat Android ke stasiun kerja uji menggunakan Android Debug Bridge (ADB), lalu jalankan pemantauan saluran logcat secara real-time.",
+        commandOrAction: "adb logcat | grep -iE 'flutter'",
+        observedEvidence: "Saluran log sistem Android siap memantau keluaran tag flutter."
       },
       {
         stepNumber: 2,
+        testCaseRef: "MASTG-TEST-0203 (DAST)",
         description: "Masuk ke akun mahasiswa, klik menu Profil pada bilah navigasi bawah, lalu buka halaman Kartu Tanda Mahasiswa Elektronik (e-KTM).",
         commandOrAction: "Aksi Pengguna: Navigasi -> Menu Profil -> Buka e-KTM",
-        observedEvidence: "Aplikasi langsung memuntahkan objek JSON lengkap ke logcat, memuat Nama Lengkap, NIM, Tempat & Tanggal Lahir, Alamat Rumah, Surel Pribadi, Data Orang Tua/Wali (Nama Ayah, Nama Ibu, No. Telepon), serta nilai 'Hash Password Preference'."
+        observedEvidence: "Aplikasi langsung memuntahkan objek JSON lengkap ke saluran logcat sistem Android, memuat Nama Lengkap, NIM, Tempat & Tanggal Lahir, Alamat Rumah, Surel Pribadi, Data Orang Tua/Wali (Nama Ayah, Nama Ibu Kandung, No. Telepon), serta nilai 'Hash Password Preference'."
+      },
+      {
+        stepNumber: 3,
+        testCaseRef: "MASTG-TEST-0231 (SAST)",
+        description: "Ekstraksi berkas pustaka biner native arsitektur x86_64 dari paket APK rilis produksi App-A:",
+        commandOrAction: "unzip -p App-A.apk lib/x86_64/libapp.so > libcore_engine.so",
+        observedEvidence: "Biner native libapp.so (disimpan sebagai libcore_engine.so) berhasil diekstraksi."
+      },
+      {
+        stepNumber: 4,
+        testCaseRef: "MASTG-TEST-0231 (SAST)",
+        description: "Ekstraksi teks statis (string literal) dari biner mesin untuk mendeteksi residu penanda parameter pencatatan internal:",
+        commandOrAction: "strings libcore_engine.so | grep -iE 'NIM_MHS|ID_PENGGUNA|Hash Password'",
+        observedEvidence: "Ditemukan string literal statis 'NIM_MHS', 'ID_PENGGUNA', dan 'Hash Password Preference :' di dalam biner terkompilasi, mengonfirmasi keberadaan residu label pencatatan internal pada biner rilis."
       }
     ],
     operationalImpact: {
-      threatActor: "Penyerang lokal yang meminjam/mengakses fisik perangkat, aplikasi jahat lain di perangkat (pada OS versi lawas atau yang memiliki izin baca log), maupun malware di komputer tempat ponsel ditancapkan saat USB debugging aktif.",
-      prerequisites: "Akses ke logcat perangkat melalui port USB/ADB atau izin sistem.",
-      consequences: "Kebocoran menyeluruh data privasi (PII) mahasiswa dan terungkapnya nilai hash verifikasi kata sandi lokal, yang memudahkan profiling korban dan upaya peretasan akun."
+      threatActor: "Penyerang lokal yang meminjam/mengakses fisik perangkat, aplikasi pihak ketiga berbahaya di perangkat (pada versi OS atau konfigurasi yang memiliki izin baca log sistem), atau pihak yang merekayasa balik berkas APK rilis produksi.",
+      prerequisites: "Akses ke antarmuka ADB/logcat perangkat saat atau sesudah sesi aplikasi berjalan, atau kepemilikan berkas biner APK produksi.",
+      consequences: "Kebocoran menyeluruh data privasi (PII) mahasiswa dan keluarga yang berpotensi dimanfaatkan untuk rekayasa sosial (social engineering) atau profiling korban, serta terungkapnya nilai hash kata sandi lokal yang membuka risiko peretasan akun via offline cracking. Residu string pada biner native membuka petunjuk struktural (architectural footprint) penamaan variabel internal yang memperkuat kemudahan analisis alur data sensitif."
     },
     evidenceSnippets: [
       {
-        title: "Cuplikan Logcat Hasil Ekstraksi (ADB Terminal)",
+        title: "Cuplikan Logcat Hasil Ekstraksi Runtime (ADB Terminal)",
+        testCaseRef: "MASTG-TEST-0203 (DAST)",
         language: "json",
         content: `I/flutter ( 4210): {
   "status": 200,
@@ -124,57 +141,10 @@ export const SANITIZED_TEST_CASES: TestCaseDossier[] = [
     }
   }
 }`
-      }
-    ],
-    images: [
-      {
-        caption: "Gambar Bukti 1: Keluaran logcat pada App-A yang memaparkan data pribadi lengkap mahasiswa, data orang tua, serta nilai Hash Password Preference",
-        url: "/evidence/case_img_18.png"
       },
       {
-        caption: "Gambar Bukti 2: Detail pemaparan nilai hash kata sandi lokal dan respons jadwal perkuliahan pada logcat",
-        url: "/evidence/case_img_19.png"
-      }
-    ]
-  },
-  {
-    caseId: "CASE-03",
-    targetApp: "App-A",
-    targetAppNameSanitized: "App-A (Aplikasi Mahasiswa)",
-    controlId: "MASTG-TEST-0231",
-    masvsCategory: "MASVS-STORAGE",
-    testMethod: "SAST",
-    isOverlappingControl: true,
-    weaknessTaxonomy: {
-      cweId: "CWE-215",
-      cweTitle: "Insertion of Sensitive Information Into Debugging Code",
-      masweId: "MASWE-0005",
-      masweTitle: "Insertion of Sensitive Data into Logs"
-    },
-    findingTitle: "Teks Penanda Variabel Sensitif dan Label Kredensial Tertinggal pada Biner Native (libcore_engine.so)",
-    rootCause: "Proses pembangunan (build) rilis produksi aplikasi belum menerapkan teknik penyusutan kode (code shrinking) dan pembersihan simbol (string stripping) secara tuntas pada biner mesin Flutter (libapp.so). Akibatnya, teks penanda internal (NIM_MHS, ID_PENGGUNA, Hash Password Preference :) yang digunakan pengembang saat masa penulisan program tetap tertanam di dalam segmen memori statis biner rilis.",
-    stepByStepReproduction: [
-      {
-        stepNumber: 1,
-        description: "Ekstraksi berkas pustaka biner native arsitektur x86_64 dari paket APK rilis:",
-        commandOrAction: "unzip -p App-A.apk lib/x86_64/libapp.so > libcore_engine.so",
-        observedEvidence: "Biner native libapp.so (disimpan sebagai libcore_engine.so) berhasil diekstraksi."
-      },
-      {
-        stepNumber: 2,
-        description: "Ekstraksi teks statis (string literal) dari biner mesin untuk mendeteksi penanda parameter internal:",
-        commandOrAction: "strings libcore_engine.so | grep -iE 'NIM_MHS|ID_PENGGUNA|Hash Password'",
-        observedEvidence: "Ditemukan string literal statis 'NIM_MHS', 'ID_PENGGUNA', dan 'Hash Password Preference :' di dalam biner terkompilasi."
-      }
-    ],
-    operationalImpact: {
-      threatActor: "Pihak luar yang melakukan rekayasa balik (reverse engineering) luring (offline) terhadap berkas APK rilis produksi.",
-      prerequisites: "Memiliki berkas APK aplikasi produksi.",
-      consequences: "• Tidak memaparkan data pribadi individu secara langsung, karena berkas biner instalasi APK tidak menyimpan data pengguna dinamis.\n• Membuka petunjuk struktural (architectural footprint) yang membeberkan penamaan variabel internal dan parameter autentikasi.\n• Menjadi penanda statis yang berkorelasi dengan ditemukannya pencatatan data pribadi dan hash kata sandi ke logcat saat pengujian dinamis App-A Aplikasi Mahasiswa (MASTG-TEST-0203)."
-    },
-    evidenceSnippets: [
-      {
-        title: "Keluaran Ekstraksi String pada Biner Mesin",
+        title: "Keluaran Ekstraksi String pada Biner Mesin (libcore_engine.so)",
+        testCaseRef: "MASTG-TEST-0231 (SAST)",
         language: "plaintext",
         content: `$ strings libcore_engine.so | grep -iE 'nim_mhs|id_pengguna|hash password'
 NIM_MHS
@@ -185,13 +155,29 @@ user_auth_vault_token`
     ],
     images: [
       {
-        caption: "Gambar Bukti: Ekstraksi teks string label penanda identitas dan kredensial pada biner native libapp.so App-A",
-        url: "/evidence/case_img_30.png"
+        caption: "Gambar Bukti DAST 1: Keluaran logcat pada App-A yang memaparkan data pribadi lengkap mahasiswa, data orang tua, serta nilai Hash Password Preference",
+        url: "/evidence/case_img_18.png",
+        testCaseRef: "MASTG-TEST-0203 (DAST)"
+      },
+      {
+        caption: "Gambar Bukti DAST 2: Detail pemaparan nilai hash kata sandi lokal dan respons jadwal perkuliahan pada logcat",
+        url: "/evidence/case_img_19.png",
+        testCaseRef: "MASTG-TEST-0203 (DAST)"
+      },
+      {
+        caption: "Gambar Bukti SAST: Ekstraksi teks string label penanda identitas dan kredensial pada biner native libapp.so App-A",
+        url: "/evidence/case_img_30.png",
+        testCaseRef: "MASTG-TEST-0231 (SAST)"
       }
     ]
   },
+
+  // ==========================================
+  // CASE-03: App-A (Mahasiswa) - Konfigurasi Cleartext Traffic Permisif
+  // Kontrol: MASTG-TEST-0235
+  // ==========================================
   {
-    caseId: "CASE-04",
+    caseId: "CASE-03",
     targetApp: "App-A",
     targetAppNameSanitized: "App-A (Aplikasi Mahasiswa)",
     controlId: "MASTG-TEST-0235",
@@ -204,26 +190,26 @@ user_auth_vault_token`
       masweId: "MASWE-0010",
       masweTitle: "Cleartext Communication Allowed"
     },
-    findingTitle: "Konfigurasi Manifes Membuka Izin Lalu Lintas Data HTTP Teks Biasa (usesCleartextTraffic='true')",
-    rootCause: "Pada file AndroidManifest.xml, pengembang secara eksplisit mendeklarasikan atribut android:usesCleartextTraffic='true' tanpa membatasi domain dengan Network Security Config. Sebenarnya untuk saat ini seluruh komunikasi utama aplikasi sudah berjalan di atas protokol aman HTTPS (TLS 1.3), sehingga belum ada data yang bocor secara langsung saat pengujian. Namun, deklarasi ini menghilangkan proteksi bawaan Android (secure-by-default sejak Android 9) dan menjadi celah keamanan laten di masa mendatang apabila pengembang memperbarui koding, menambahkan fitur baru, atau mengintegrasikan pustaka pihak ketiga (third-party library) yang memanggil alamat HTTP biasa.",
+    findingTitle: "Konfigurasi Manifes Mengizinkan Lalu Lintas Cleartext (android:usesCleartextTraffic='true')",
+    rootCause: "Pada file AndroidManifest.xml, pengembang secara eksplisit mendeklarasikan atribut android:usesCleartextTraffic='true' pada elemen <application> dan tidak menyertakan deklarasi pembatasan domain melalui Network Security Configuration (android:networkSecurityConfig). Berdasarkan hasil pengujian dinamis lalu lintas jaringan (MASTG-TEST-0218 dan MASTG-TEST-0233), saat ini seluruh komunikasi utama aplikasi telah berjalan di atas protokol aman HTTPS (TLS 1.3) dan tidak teramati adanya transmisi HTTP port 80 aktif. Namun, deklarasi usesCleartextTraffic='true' ini secara arsitektural menonaktifkan proteksi default sistem Android (yang sejak Android 9 Pie secara baku memblokir lalu lintas HTTP teks polos). Hal ini merupakan celah keamanan laten yang secara legal mengizinkan sistem operasi meloloskan komunikasi teks polos tanpa enkripsi apabila di kemudian hari terdapat penambahan fitur, integrasi pustaka pihak ketiga (third-party library), atau pemanggilan URL HTTP biasa.",
     stepByStepReproduction: [
       {
         stepNumber: 1,
-        description: "Dekomplikasi berkas instalasi APK rilis produksi App-A menggunakan alat rekayasa balik Apktool.",
+        description: "Dekompilasi berkas instalasi APK rilis produksi App-A menggunakan alat rekayasa balik Apktool.",
         commandOrAction: "apktool d App-A.apk -o hasil_dekompilasi",
         observedEvidence: "Seluruh manifes dan aset aplikasi berhasil diekstrak."
       },
       {
         stepNumber: 2,
-        description: "Periksa atribut elemen <application> pada file AndroidManifest.xml untuk melihat kebijakan keamanan jaringan.",
+        description: "Periksa atribut elemen <application> pada file AndroidManifest.xml untuk melihat kebijakan keamanan lalu lintas jaringan.",
         commandOrAction: "grep -n 'usesCleartextTraffic' hasil_dekompilasi/AndroidManifest.xml",
-        observedEvidence: "Terbukti ditemukan deklarasi android:usesCleartextTraffic='true' aktif secara global tanpa whitelist domain yang ketat."
+        observedEvidence: "Terbukti ditemukan deklarasi android:usesCleartextTraffic='true' aktif secara global pada tag application dan tidak ditemukan konfigurasi pembatasan android:networkSecurityConfig."
       }
     ],
     operationalImpact: {
       threatActor: "Penyerang Man-in-the-Middle (MitM) yang berada di jaringan nirkabel yang sama (misalnya Wi-Fi publik kampus atau kafe tanpa proteksi).",
-      prerequisites: "Pengguna terhubung ke Wi-Fi publik yang sama dengan penyerang, dan terdapat komponen/fitur aplikasi (saat ini atau pembaruan di masa depan) yang memanggil endpoint HTTP biasa.",
-      consequences: "Karena Android tidak lagi memblokir koneksi teks biasa, sistem operasi akan meloloskan pengiriman paket data tanpa enkripsi. Akibatnya, transmisi data mahasiswa berisiko disadap, dibaca, atau dimanipulasi oleh penyerang melalui serangan Man-in-the-Middle (MitM)."
+      prerequisites: "Pengguna terhubung ke Wi-Fi publik yang sama dengan penyerang, dan terdapat komponen atau fitur aplikasi (saat ini maupun pembaruan masa depan) yang mengeksekusi komunikasi HTTP biasa.",
+      consequences: "Karena sistem operasi Android diizinkan melewatkan lalu lintas teks biasa oleh konfigurasi aplikasi, paket data pada transmisi HTTP yang tidak terenkripsi rentan disadap, dibaca, atau dimanipulasi oleh penyerang melalui serangan Man-in-the-Middle (MitM). (Catatan: Pengujian lalu lintas dinamis saat ini membuktikan komunikasi utama terenkripsi TLS 1.3, sehingga status temuan ini merefleksikan kelemahan konfigurasi permisif / risiko arsitektural potensial)."
     },
     evidenceSnippets: [
       {
@@ -236,9 +222,8 @@ user_auth_vault_token`
     <application
         android:label="App-A"
         android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true"
-        android:networkSecurityConfig="@xml/network_security_config">
-        <!-- Aktivitas aplikasi -->
+        android:usesCleartextTraffic="true">
+        <!-- Aktivitas aplikasi; tidak ada atribut android:networkSecurityConfig -->
     </application>
 </manifest>`
       }
@@ -256,15 +241,16 @@ user_auth_vault_token`
   },
 
   // ==========================================
-  // Rumpun Aplikasi Orang Tua (App-B): CASE-05 s/d CASE-06
+  // CASE-04: App-B (Orang Tua) - Kebocoran Informasi Sensitif Melalui Logging
+  // Kontrol: MASTG-TEST-0203 (DAST) + MASTG-TEST-0231 (SAST)
   // ==========================================
   {
-    caseId: "CASE-05",
+    caseId: "CASE-04",
     targetApp: "App-B",
     targetAppNameSanitized: "App-B (Aplikasi Orang Tua)",
-    controlId: "MASTG-TEST-0203",
+    controlId: "MASTG-TEST-0203 + MASTG-TEST-0231",
     masvsCategory: "MASVS-STORAGE",
-    testMethod: "DAST",
+    testMethod: "DAST & SAST",
     isOverlappingControl: true,
     weaknessTaxonomy: {
       cweId: "CWE-532",
@@ -272,99 +258,62 @@ user_auth_vault_token`
       masweId: "MASWE-0005",
       masweTitle: "Insertion of Sensitive Data into Logs"
     },
-    findingTitle: "Pencatatan Otomatis URL Permintaan API Beserta Token Akses Aktif ke Logcat Setiap Perpindahan Menu",
-    rootCause: "Aplikasi menerapkan pencatatan log otomatis berbasis event (event-driven logging) setiap kali pengguna berpindah halaman antarmuka. Setiap perpindahan menu mengirimkan URL pemanggilan API lengkap—yang menyertakan parameter access-token aktif, NIM mahasiswa, dan kode mata kuliah—ke jendela logcat sistem Android.",
+    findingTitle: "Kebocoran Informasi Sensitif Melalui Logging (Runtime Logcat & Residu Biner Native)",
+    rootCause: "Terjadi kelemahan tata kelola informasi pada fase rilis aplikasi yang terbukti melalui dua metode evaluasi:\n\n1. Pengujian Dinamis (DAST - MASTG-TEST-0203): Aplikasi menerapkan mekanisme pencatatan log otomatis berbasis event antarmuka (event-driven logging). Setiap perpindahan menu pengguna (misal: Beranda, Presensi Kuliah, Prestasi Mahasiswa), aplikasi mencetak URL permintaan API lengkap ke logcat Android dengan tag 'flutter' pada level Informational. URL tersebut secara gamblang memuat parameter token akses aktif ('access-token=act_...'), NIM mahasiswa, kode mata kuliah, serta isi respons server portofolio prestasi mahasiswa. Pengujian empiris lanjutan via cURL membuktikan bahwa token akses aktif yang bocor tersebut dapat digunakan ulang (replay attack) dari stasiun kerja luar tanpa kredensial login untuk menarik data IPK dan transkrip nilai mahasiswa.\n\n2. Analisis Statis (SAST - MASTG-TEST-0231): Penelusuran statis terhadap biner native libapp.so (libcore_parent.so) menemukan teks pesan galat eksplisit ('Failed to get photo token:') dan nama-nama parameter formulir autentikasi ('LoginForm[password]', 'LoginForm[username]', 'access_token', 'tokenExpiry', 'user_nim', 'user_name'). Temuan ini mengonfirmasi adanya residu logika autentikasi dan penanganan token pada biner rilis produksi yang berkorelasi dengan pemrosesan token autentikasi yang terpapar di saluran logcat.",
     stepByStepReproduction: [
       {
         stepNumber: 1,
-        description: "Hubungkan perangkat uji App-B ke komputer dan pantau keluaran logcat Android.",
-        commandOrAction: "adb logcat | grep -iE 'flutter|target-institution'",
-        observedEvidence: "Pemantauan logcat aktif."
+        testCaseRef: "MASTG-TEST-0203 (DAST)",
+        description: "Hubungkan perangkat uji App-B ke komputer dan pantau keluaran logcat Android secara real-time.",
+        commandOrAction: "adb logcat | grep -iE 'flutter'",
+        observedEvidence: "Pemantauan logcat aktif memfilter keluaran tag flutter."
       },
       {
         stepNumber: 2,
-        description: "Buka menu-menu pada aplikasi App-B: Beranda -> Presensi Perkuliahan -> Prestasi Mahasiswa.",
+        testCaseRef: "MASTG-TEST-0203 (DAST)",
+        description: "Buka dan navigasikan menu-menu pada aplikasi App-B: Beranda -> Presensi Perkuliahan -> Prestasi Mahasiswa.",
         commandOrAction: "Aksi Pengguna: Berpindah halaman antarmuka",
-        observedEvidence: "Setiap perpindahan memunculkan URL API lengkap di logcat, memuat 'access-token=act_773199...', 'student_id=187221096', dan isi respons server portofolio mahasiswa secara teks biasa."
+        observedEvidence: "Setiap perpindahan memunculkan URL API lengkap di saluran logcat, memuat 'access-token=act_...', 'student_id=187221096', dan isi respons server portofolio mahasiswa secara teks biasa."
       },
       {
         stepNumber: 3,
-        description: "Uji keabsahan token yang didapat dari logcat dengan mengirim permintaan mandiri menggunakan cURL.",
-        commandOrAction: "curl \"https://api.target.internal/v2/academic/view-gpa?access-token=act_99c0182...\"",
-        observedEvidence: "Server menerima token tersebut dan langsung menampilkan data Indeks Prestasi Kumulatif (IPK) serta transkrip nilai mahasiswa secara lengkap."
-      }
-    ],
-    operationalImpact: {
-      threatActor: "Aplikasi pihak ketiga dengan kemampuan membaca log sistem, pihak yang meminjam perangkat, atau penyerang yang mengekstrak logcat ponsel.",
-      prerequisites: "Akses ke log sistem Android saat atau sesudah sesi aplikasi berjalan.",
-      consequences: "Kebocoran token otorisasi aktif yang dapat dipakai untuk serangan replay (replay attack), memungkinkan pihak luar mengakses nilai akademik, presensi kuliah, dan data prestasi mahasiswa tanpa hak."
-    },
-    evidenceSnippets: [
-      {
-        title: "Cuplikan Logcat HTTP GET dengan Parameter Token",
-        language: "plaintext",
-        content: `I/flutter ( 5120): GET https://api.target.internal/v2/academic/view-gpa?access-token=act_99c0182fa7e811b&student_id=187221096 HTTP/1.1
-I/flutter ( 5120): GET https://api.target.internal/v2/attendance?access-token=act_99c0182fa7e811b&course_code=CS401&student_id=187221096 HTTP/1.1
-I/flutter ( 5120): GET https://api.target.internal/v2/achievements/list?access-token=act_99c0182fa7e811b HTTP/1.1`
-      }
-    ],
-    images: [
-      {
-        caption: "Gambar Bukti 1: Logcat pemaparan URL endpoint beranda (view-ipk) yang memuat parameter access-token aktif dan NIM mahasiswa",
-        url: "/evidence/image_15.png"
+        testCaseRef: "MASTG-TEST-0203 (DAST)",
+        description: "Uji keabsahan token yang didapat dari logcat dengan mengirim permintaan mandiri menggunakan cURL (Proof of Concept Replay Attack).",
+        commandOrAction: "curl \"https://api.target.internal/v2/academic/view-gpa?access-token=act_99c0182fa7e811b&student_id=187221096\"",
+        observedEvidence: "Server menerima token tersebut dan langsung menampilkan data Indeks Prestasi Kumulatif (IPK) serta transkrip nilai mahasiswa secara lengkap tanpa meminta otentikasi ulang."
       },
       {
-        caption: "Gambar Bukti 2: Logcat pemaparan URL endpoint presensi kuliah yang memuat parameter access-token, NIM, dan kode mata kuliah",
-        url: "/evidence/case_img_21.png"
-      },
-      {
-        caption: "Gambar Bukti 3: Logcat App-B yang memaparkan token otorisasi dan respons data prestasi mahasiswa setiap perpindahan menu",
-        url: "/evidence/case_img_22.png"
-      },
-      {
-        caption: "Gambar Bukti 4: Pembuktian eksploitasi nyata (PoC replay attack) menggunakan cURL berbekal token dari logcat untuk menarik data akademik",
-        url: "/evidence/case_img_23.png"
-      }
-    ]
-  },
-  {
-    caseId: "CASE-06",
-    targetApp: "App-B",
-    targetAppNameSanitized: "App-B (Aplikasi Orang Tua)",
-    controlId: "MASTG-TEST-0231",
-    masvsCategory: "MASVS-STORAGE",
-    testMethod: "SAST",
-    isOverlappingControl: true,
-    weaknessTaxonomy: {
-      cweId: "CWE-215",
-      cweTitle: "Insertion of Sensitive Information Into Debugging Code",
-      masweId: "MASWE-0005",
-      masweTitle: "Insertion of Sensitive Data into Logs"
-    },
-    findingTitle: "Pesan Galat Otentikasi Eksplisit dan Nama Parameter Form Login Tertinggal pada Biner Native",
-    rootCause: "Proses pembangunan (build) rilis produksi aplikasi belum menerapkan teknik penyusutan kode (code shrinking) dan pembersihan simbol (string stripping) secara optimal pada biner mesin Flutter (libapp.so). Akibatnya, pesan galat penarikan token autentikasi dan nama-nama parameter formulir login yang digunakan selama fase pengembangan tetap tertanam di dalam segmen memori statis biner rilis.",
-    stepByStepReproduction: [
-      {
-        stepNumber: 1,
-        description: "Ekstraksi berkas pustaka biner native arsitektur x86_64 dari paket APK rilis:",
+        stepNumber: 4,
+        testCaseRef: "MASTG-TEST-0231 (SAST)",
+        description: "Ekstraksi berkas pustaka biner native arsitektur x86_64 dari paket APK rilis produksi App-B:",
         commandOrAction: "unzip -p App-B.apk lib/x86_64/libapp.so > libcore_parent.so",
         observedEvidence: "Biner native libapp.so (disimpan sebagai libcore_parent.so) berhasil diekstraksi."
       },
       {
-        stepNumber: 2,
+        stepNumber: 5,
+        testCaseRef: "MASTG-TEST-0231 (SAST)",
         description: "Ekstraksi teks statis (string literal) dari biner mesin untuk memeriksa residu logika autentikasi dan penanganan kesalahan:",
         commandOrAction: "strings libcore_parent.so | grep -iE 'LoginForm|photo token|tokenExpiry'",
         observedEvidence: "Ditemukan string pesan galat eksplisit 'Failed to get photo token:' serta nama parameter formulir login: 'LoginForm[password]', 'LoginForm[username]', 'access_token', 'tokenExpiry', 'user_nim', dan 'user_name'."
       }
     ],
     operationalImpact: {
-      threatActor: "Pihak luar yang melakukan rekayasa balik (reverse engineering) luring (offline) terhadap berkas APK rilis produksi.",
-      prerequisites: "Memiliki berkas APK aplikasi produksi.",
-      consequences: "• Tidak memaparkan data pribadi pengguna individual secara langsung, karena berkas biner instalasi APK tidak menampung data pengguna dinamis.\n• Membuka petunjuk struktural (architectural footprint) yang membeberkan struktur parameter formulir autentikasi (LoginForm[...]) dan penanganan token. Informasi ini menjadi penanda statis yang berkorelasi dengan ditemukannya kebocoran token pada pengujian dinamis logcat Aplikasi Orang Tua (MASTG-TEST-0203)."
+      threatActor: "Aplikasi pihak ketiga dengan kemampuan membaca log sistem, pihak yang meminjam/mengakses perangkat secara fisik, atau penyerang yang mengekstrak logcat ponsel dan biner APK rilis.",
+      prerequisites: "Akses ke log sistem Android saat atau sesudah sesi aplikasi berjalan, atau berkas biner APK produksi.",
+      consequences: "Kebocoran token otorisasi aktif yang terbukti secara empiris dapat dipakai untuk serangan replay (replay attack), memungkinkan pihak luar mengakses nilai akademik, presensi kuliah, dan data prestasi mahasiswa tanpa hak akses yang sah. Residu string pada biner native membuka petunjuk struktural (architectural footprint) parameter autentikasi yang mempermudah analisis alur otorisasi."
     },
     evidenceSnippets: [
       {
+        title: "Cuplikan Logcat HTTP GET dengan Parameter Token",
+        testCaseRef: "MASTG-TEST-0203 (DAST)",
+        language: "plaintext",
+        content: `I/flutter ( 5120): GET https://api.target.internal/v2/academic/view-gpa?access-token=act_99c0182fa7e811b&student_id=187221096 HTTP/1.1
+I/flutter ( 5120): GET https://api.target.internal/v2/attendance?access-token=act_99c0182fa7e811b&course_code=CS401&student_id=187221096 HTTP/1.1
+I/flutter ( 5120): GET https://api.target.internal/v2/achievements/list?access-token=act_99c0182fa7e811b HTTP/1.1`
+      },
+      {
         title: "Cuplikan String pada Biner Mesin App-B",
+        testCaseRef: "MASTG-TEST-0231 (SAST)",
         language: "plaintext",
         content: `$ strings libcore_parent.so | grep -iE 'loginform|tokenexpiry|photo token'
 Failed to get photo token:
@@ -378,8 +327,29 @@ user_name`
     ],
     images: [
       {
-        caption: "Gambar Bukti: Ekstraksi pesan galat dan nama parameter form login pada biner native libapp.so aplikasi App-B",
-        url: "/evidence/case_img_31.png"
+        caption: "Gambar Bukti DAST 1: Logcat pemaparan URL endpoint beranda (view-ipk) yang memuat parameter access-token aktif dan NIM mahasiswa",
+        url: "/evidence/image_15.png",
+        testCaseRef: "MASTG-TEST-0203 (DAST)"
+      },
+      {
+        caption: "Gambar Bukti DAST 2: Logcat pemaparan URL endpoint presensi kuliah yang memuat parameter access-token, NIM, dan kode mata kuliah",
+        url: "/evidence/case_img_21.png",
+        testCaseRef: "MASTG-TEST-0203 (DAST)"
+      },
+      {
+        caption: "Gambar Bukti DAST 3: Logcat App-B yang memaparkan token otorisasi dan respons data prestasi mahasiswa setiap perpindahan menu",
+        url: "/evidence/case_img_22.png",
+        testCaseRef: "MASTG-TEST-0203 (DAST)"
+      },
+      {
+        caption: "Gambar Bukti DAST 4: Pembuktian eksploitasi nyata (PoC replay attack) menggunakan cURL berbekal token dari logcat untuk menarik data akademik",
+        url: "/evidence/case_img_23.png",
+        testCaseRef: "MASTG-TEST-0203 (DAST)"
+      },
+      {
+        caption: "Gambar Bukti SAST: Ekstraksi pesan galat dan nama parameter form login pada biner native libapp.so aplikasi App-B",
+        url: "/evidence/case_img_31.png",
+        testCaseRef: "MASTG-TEST-0231 (SAST)"
       }
     ]
   }

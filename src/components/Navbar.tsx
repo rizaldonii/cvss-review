@@ -1,11 +1,12 @@
 import React from "react";
 import type { ReviewerProfile } from "../types";
-import { Shield, User, LogOut, TableProperties, CheckCircle } from "lucide-react";
+import { Shield, User, LogOut, TableProperties, CheckCircle, BookOpen } from "lucide-react";
 
 interface NavbarProps {
   reviewer: ReviewerProfile | null;
   onLogout: () => void;
   onOpenAdmin: () => void;
+  onOpenGuide: () => void;
   currentCaseIndex: number;
   totalCases: number;
   completedCaseIds: string[];
@@ -16,6 +17,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   reviewer,
   onLogout,
   onOpenAdmin,
+  onOpenGuide,
   currentCaseIndex,
   totalCases,
   completedCaseIds,
@@ -60,6 +62,16 @@ export const Navbar: React.FC<NavbarProps> = ({
       )}
 
       <div className="navbar-actions-section">
+        <button
+          type="button"
+          className="navbar-guide-btn"
+          onClick={onOpenGuide}
+          title="Buka Panduan Penilaian CVSS v3.1"
+        >
+          <BookOpen size={15} />
+          <span>Panduan CVSS</span>
+        </button>
+
         {reviewer ? (
           <div className="reviewer-tag-box">
             <div className="reviewer-avatar">

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import type { CaseEvaluationSubmission, TestCaseDossier, SupabaseConfig } from "../types";
+import React, { useState } from "react";
+import type { CaseEvaluationSubmission, TestCaseDossier, SupabaseConfig, CVSSv31Metrics } from "../types";
 import {
   getAllSubmissions,
   deleteSubmission,
@@ -25,7 +25,10 @@ import {
   FileText,
   Sliders,
   X,
-  Trash2
+  Trash2,
+  Plus,
+  Eye,
+  KeyRound
 } from "lucide-react";
 
 interface AdminViewProps {
@@ -46,30 +49,26 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
   // Active view tab
   const [activeTab, setActiveTab] = useState<"compare" | "all" | "cloud">("compare");
 
-  // Multi-reviewer comparison selection
-  const [reviewerA, setReviewerA] = useState<string>("");
-  const [reviewerB, setReviewB] = useState<string>("");
+  // Multi-reviewer comparison selection (at least 3 evaluators)
+  const [selectedReviewers, setSelectedReviewers] = useState<string[]>(["", "", ""]);
+
+  // Detailed modal for in-depth comparison of a specific case
+  const [inspectCaseId, setInspectCaseId] = useState<string | null>(null);
 
   // Supabase settings state
-  const [cloudConfig, setCloudConfig] = useState<SupabaseConfig>({
-    supabaseUrl: "",
-    supabaseAnonKey: ""
-  });
+  const [cloudConfig, setCloudConfig] = useState<SupabaseConfig>(() => getSupabaseConfig());
   const [cloudTestStatus, setCloudTestStatus] = useState<string>("");
 
-  useEffect(() => {
-    setCloudConfig(getSupabaseConfig());
-  }, []);
+  const validPin = import.meta.env.VITE_ADMIN_PIN || "skripsi2026";
 
   const handleUnlock = (e: React.FormEvent) => {
     e.preventDefault();
-    // Default PIN: skripsi2026 or 1234
-    if (pin.trim() === "skripsi2026" || pin.trim() === "1234") {
+    if (pin.trim() === validPin || pin.trim() === "1234") {
       setIsUnlocked(true);
       setPinError("");
       loadData();
     } else {
-      setPinError("PIN salah. Gunakan PIN default: skripsi2026");
+      setPinError("PIN salah. Silakan masukkan PIN yang benar (Default: skripsi2026).");
     }
   };
 
@@ -79,16 +78,56 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
     setSubmissions(res.data);
     setIsCloud(res.fromCloud);
 
-    // Set default reviewers if available
+    // Populate default reviewers (prefer Rizal, Arya, Pak Taufik or first 3)
     const uniqueReviewers = Array.from(new Set(res.data.map(s => s.reviewerName)));
-    if (uniqueReviewers.length >= 1 && !reviewerA) {
-      setReviewerA(uniqueReviewers[0]);
-    }
-    if (uniqueReviewers.length >= 2 && !reviewerB) {
-      setReviewB(uniqueReviewers[1]);
-    }
+    setSelectedReviewers(prev => {
+      const updated = [...prev];
+      // Ensure at least 3 slots
+      while (updated.length < 3) {
+        updated.push("");
+      }
+
+      // Check if we need to auto-populate empty slots
+      if (uniqueReviewers.length > 0) {
+        // Preferred order
+        const preferred = ["Rizal", "Arya", "Pak Taufik"];
+        const matchedPreferred = preferred.filter(p =>
+          uniqueReviewers.some(u => u.toLowerCase().includes(p.toLowerCase()))
+        );
+
+        for (let i = 0; i < 3; i++) {
+          if (!updated[i]) {
+            if (matchedPreferred[i]) {
+              const exact = uniqueReviewers.find(u =>
+                u.toLowerCase().includes(matchedPreferred[i].toLowerCase())
+              );
+              if (exact) updated[i] = exact;
+            } else if (uniqueReviewers[i] && !updated.includes(uniqueReviewers[i])) {
+              updated[i] = uniqueReviewers[i];
+            }
+          }
+        }
+      }
+      return updated;
+    });
 
     setLoading(false);
+  };
+
+  const handleReviewerSlotChange = (slotIndex: number, newReviewer: string) => {
+    setSelectedReviewers(prev => {
+      const updated = [...prev];
+      updated[slotIndex] = newReviewer;
+      return updated;
+    });
+  };
+
+  const handleAddReviewerSlot = () => {
+    setSelectedReviewers(prev => [...prev, ""]);
+  };
+
+  const handleRemoveReviewerSlot = (slotIndex: number) => {
+    setSelectedReviewers(prev => prev.filter((_, idx) => idx !== slotIndex));
   };
 
   const handleDownloadCsv = () => {
@@ -97,7 +136,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `Rekap_CVSS_Skripsi_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute("download", `Rekap_CVSS_Skripsi_4Kasus_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -119,10 +158,13 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
 
   const handleDeleteReviewer = async (reviewerName: string) => {
     if (!reviewerName) return;
-    if (window.confirm(`Yakin ingin MENGHAPUS SELURUH evaluasi dari penilai "${reviewerName}"? Tindakan ini akan menghapus semua responnya dari sistem.`)) {
+    if (
+      window.confirm(
+        `Yakin ingin MENGHAPUS SELURUH evaluasi dari penilai "${reviewerName}"? Tindakan ini akan menghapus semua responnya dari sistem.`
+      )
+    ) {
       await deleteReviewerAll(reviewerName);
-      if (reviewerA === reviewerName) setReviewerA("");
-      if (reviewerB === reviewerName) setReviewB("");
+      setSelectedReviewers(prev => prev.map(r => (r === reviewerName ? "" : r)));
       await loadData();
     }
   };
@@ -150,6 +192,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
   };
 
   const uniqueReviewers = Array.from(new Set(submissions.map(s => s.reviewerName)));
+  const activeReviewers = selectedReviewers.filter(Boolean);
 
   // If locked, render PIN entry modal
   if (!isUnlocked) {
@@ -162,8 +205,8 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
             </div>
             <h3 className="auth-title">Akses Khusus Peneliti (Admin)</h3>
             <p className="auth-desc">
-              Masukkan PIN untuk membuka dashboard rekapitulasi nilai, komparasi pakar, dan ekspor
-              Bab 4 Skripsi.
+              Masukkan PIN untuk membuka dashboard komparasi penilaian tiga evaluator dan ekspor
+              data Bab 4 Skripsi.
             </p>
           </div>
 
@@ -174,13 +217,13 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
               <input
                 type="password"
                 className="form-input text-center font-mono tracking-widest text-lg"
-                placeholder="Masukkan PIN (Default: skripsi2026)"
+                placeholder="Masukkan PIN"
                 value={pin}
                 onChange={e => setPin(e.target.value)}
                 autoFocus
               />
               <span className="text-xs text-muted mt-1 block">
-                Petunjuk: Masukkan PIN <code>skripsi2026</code>
+                Petunjuk: Default PIN adalah <code>skripsi2026</code> (dapat diatur melalui environment variable <code>VITE_ADMIN_PIN</code>).
               </span>
             </div>
 
@@ -198,13 +241,16 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
     );
   }
 
+  const inspectedCase = cases.find(c => c.caseId === inspectCaseId);
+  const metricKeys: (keyof CVSSv31Metrics)[] = ["AV", "AC", "PR", "UI", "S", "C", "I", "A"];
+
   return (
     <div className="admin-fullscreen-modal">
       <div className="admin-header-bar">
         <div className="admin-title-group">
           <ShieldCheck size={22} className="text-accent" />
           <div>
-            <h2 className="admin-heading">Dashboard Rekapitulasi &amp; Konsensus CVSS v3.1</h2>
+            <h2 className="admin-heading">Dashboard Komparasi CVSS v3.1 (Tiga Evaluator)</h2>
             <span className="admin-subheading">
               Sumber Data:{" "}
               {isCloud ? (
@@ -226,14 +272,14 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
             className={`admin-tab-btn ${activeTab === "compare" ? "active" : ""}`}
             onClick={() => setActiveTab("compare")}
           >
-            <Users size={16} /> Komparasi Pakar (Bab 4)
+            <Users size={16} /> Komparasi Evaluator ({activeReviewers.length} Terpilih)
           </button>
           <button
             type="button"
             className={`admin-tab-btn ${activeTab === "all" ? "active" : ""}`}
             onClick={() => setActiveTab("all")}
           >
-            <FileText size={16} /> Semua Data Respon ({submissions.length})
+            <FileText size={16} /> Semua Respon ({submissions.length})
           </button>
           <button
             type="button"
@@ -262,13 +308,13 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
             <span className="stat-value">{uniqueReviewers.length} Penilai</span>
           </div>
           <div className="stat-card">
-            <span className="stat-label">Total Evaluasi Kasus Masuk</span>
+            <span className="stat-label">Total Respon Masuk</span>
             <span className="stat-value">{submissions.length} Respon</span>
           </div>
           <div className="stat-card">
             <span className="stat-label">Kasus Selesai Dinilai</span>
             <span className="stat-value">
-              {cases.filter(c => submissions.some(s => s.caseId === c.caseId)).length} / 6 Kasus
+              {cases.filter(c => submissions.some(s => s.caseId === c.caseId)).length} / {cases.length} Kasus
             </span>
           </div>
 
@@ -283,114 +329,131 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
           </div>
         </div>
 
-        {/* TAB 1: PEER-EXPERT COMPARISON (BLIND CROSS-CHECK) */}
+        {/* TAB 1: 3+ EVALUATOR COMPARISON MATRIX */}
         {activeTab === "compare" && (
           <div className="comparison-tab-container">
+            {/* Multi-Evaluator Slot Selector Card */}
             <div className="comparison-controls-card">
-              <div className="evaluator-picker-group">
-                <div className="picker-item">
-                  <div className="picker-header-row">
-                    <label className="picker-label">Evaluator 1 (Misal: Peneliti Mandiri):</label>
-                    {reviewerA && (
-                      <button
-                        type="button"
-                        className="btn-delete-reviewer-mini"
-                        onClick={() => handleDeleteReviewer(reviewerA)}
-                        title={`Hapus seluruh evaluasi dari ${reviewerA}`}
-                      >
-                        <Trash2 size={12} /> Hapus Data {reviewerA}
-                      </button>
-                    )}
-                  </div>
-                  <select
-                    className="picker-select"
-                    value={reviewerA}
-                    onChange={e => setReviewerA(e.target.value)}
-                  >
-                    <option value="">-- Pilih Penilai 1 --</option>
-                    {uniqueReviewers.map(r => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <div className="evaluator-slots-header">
+                <span className="slots-title">
+                  <Users size={16} className="inline-icon text-accent" /> Panel Komparasi Evaluator (Pilih minimal 3 evaluator untuk dibandingkan):
+                </span>
+                <button
+                  type="button"
+                  className="btn-add-evaluator-slot"
+                  onClick={handleAddReviewerSlot}
+                  title="Tambah kolom evaluator tambahan"
+                >
+                  <Plus size={14} /> Tambah Kolom Evaluator
+                </button>
+              </div>
 
-                <div className="vs-badge">VS</div>
+              <div className="evaluator-slots-grid">
+                {selectedReviewers.map((revName, idx) => {
+                  const defaultLabel =
+                    idx === 0
+                      ? "Evaluator 1 (Peneliti: Rizal)"
+                      : idx === 1
+                      ? "Evaluator 2 (Arya)"
+                      : idx === 2
+                      ? "Evaluator 3 (Pak Taufik)"
+                      : `Evaluator ${idx + 1}`;
 
-                <div className="picker-item">
-                  <div className="picker-header-row">
-                    <label className="picker-label">Evaluator 2 (Misal: Pakar Eksternal):</label>
-                    {reviewerB && (
-                      <button
-                        type="button"
-                        className="btn-delete-reviewer-mini"
-                        onClick={() => handleDeleteReviewer(reviewerB)}
-                        title={`Hapus seluruh evaluasi dari ${reviewerB}`}
+                  return (
+                    <div key={idx} className="picker-item-slot">
+                      <div className="picker-header-row">
+                        <label className="picker-label">{defaultLabel}:</label>
+                        <div className="picker-slot-actions">
+                          {revName && (
+                            <button
+                              type="button"
+                              className="btn-delete-reviewer-mini"
+                              onClick={() => handleDeleteReviewer(revName)}
+                              title={`Hapus seluruh evaluasi dari ${revName}`}
+                            >
+                              <Trash2 size={12} /> Hapus Data
+                            </button>
+                          )}
+                          {selectedReviewers.length > 3 && (
+                            <button
+                              type="button"
+                              className="btn-remove-slot-mini"
+                              onClick={() => handleRemoveReviewerSlot(idx)}
+                              title="Tutup slot evaluator ini"
+                            >
+                              <X size={12} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <select
+                        className="picker-select"
+                        value={revName}
+                        onChange={e => handleReviewerSlotChange(idx, e.target.value)}
                       >
-                        <Trash2 size={12} /> Hapus Data {reviewerB}
-                      </button>
-                    )}
-                  </div>
-                  <select
-                    className="picker-select"
-                    value={reviewerB}
-                    onChange={e => setReviewB(e.target.value)}
-                  >
-                    <option value="">-- Pilih Penilai 2 --</option>
-                    {uniqueReviewers.map(r => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                        <option value="">-- Pilih Penilai {idx + 1} --</option>
+                        {uniqueReviewers.map(r => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
+            {/* Comparison Matrix Table */}
             <div className="comparison-table-wrapper">
               <table className="comparison-table">
                 <thead>
                   <tr>
-                    <th>Case ID</th>
-                    <th>Target &amp; Kontrol</th>
-                    <th>Penilai 1: {reviewerA || "-"}</th>
-                    <th>Penilai 2: {reviewerB || "-"}</th>
-                    <th>Status Konsensus</th>
-                    <th>Perbedaan Metrik</th>
+                    <th style={{ minWidth: "220px" }}>Kelompok Kerentanan</th>
+                    {activeReviewers.map(rName => (
+                      <th key={rName} style={{ minWidth: "240px" }}>
+                        <div className="evaluator-col-header">
+                          <span className="evaluator-col-name">{rName}</span>
+                          <span className="evaluator-col-role">
+                            {submissions.find(s => s.reviewerName === rName)?.reviewerRole || "Evaluator"}
+                          </span>
+                        </div>
+                      </th>
+                    ))}
+                    <th style={{ minWidth: "160px" }}>Status Kesesuaian</th>
+                    <th style={{ minWidth: "120px" }} className="text-center">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
                   {cases.map(c => {
-                    const subA = submissions.find(
-                      s => s.caseId === c.caseId && s.reviewerName === reviewerA
+                    const reviewerSubs = activeReviewers.map(rName =>
+                      submissions.find(s => s.caseId === c.caseId && s.reviewerName === rName)
                     );
-                    const subB = submissions.find(
-                      s => s.caseId === c.caseId && s.reviewerName === reviewerB
-                    );
+
+                    const allFilled =
+                      activeReviewers.length > 0 &&
+                      reviewerSubs.every(sub => sub !== undefined && sub !== null);
+
+                    const filledCount = reviewerSubs.filter(Boolean).length;
 
                     let status = "PENDING";
-                    let diffs: string[] = [];
+                    let diffMetrics: string[] = [];
 
-                    if (subA && subB) {
-                      if (subA.vectorString === subB.vectorString) {
+                    if (allFilled && reviewerSubs.length >= 2) {
+                      const firstVector = reviewerSubs[0]!.vectorString;
+                      const allMatch = reviewerSubs.every(sub => sub!.vectorString === firstVector);
+
+                      if (allMatch) {
                         status = "CONSENSUS";
                       } else {
                         status = "DISCREPANCY";
-                        // Find which metric keys differ
-                        const keys: (keyof typeof subA.metrics)[] = [
-                          "AV",
-                          "AC",
-                          "PR",
-                          "UI",
-                          "S",
-                          "C",
-                          "I",
-                          "A"
-                        ];
-                        keys.forEach(k => {
-                          if (subA.metrics[k] !== subB.metrics[k]) {
-                            diffs.push(`${k}: ${subA.metrics[k]} ≠ ${subB.metrics[k]}`);
+                        // Find which metrics differ across ANY of the evaluators
+                        metricKeys.forEach(k => {
+                          const val0 = reviewerSubs[0]!.metrics[k];
+                          const hasDiff = reviewerSubs.some(sub => sub!.metrics[k] !== val0);
+                          if (hasDiff) {
+                            diffMetrics.push(k);
                           }
                         });
                       }
@@ -399,69 +462,86 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
                     return (
                       <tr key={c.caseId}>
                         <td>
-                          <strong className="case-id-text">{c.caseId}</strong>
-                        </td>
-                        <td>
                           <div className="table-target-col">
+                            <span className="case-id-text">{c.caseId}</span>
                             <span className="app-name-sm">{c.targetAppNameSanitized}</span>
-                            <span className="control-name-sm">{c.controlId}</span>
+                            <strong className="finding-title-sm">{c.findingTitle}</strong>
+                            <span className="control-name-sm">Ref: {c.controlId}</span>
                           </div>
                         </td>
-                        <td>
-                          {subA ? (
-                            <div className="reviewer-score-cell">
-                              <span className="score-badge-sm">{subA.baseScore.toFixed(1)}</span>
-                              <span className={`sev-tag-sm sev-${subA.severity.toLowerCase()}`}>
-                                {subA.severity}
-                              </span>
-                              <code className="vector-snippet">{subA.vectorString}</code>
-                            </div>
-                          ) : (
-                            <span className="text-muted italic">Belum mengisi</span>
-                          )}
-                        </td>
-                        <td>
-                          {subB ? (
-                            <div className="reviewer-score-cell">
-                              <span className="score-badge-sm">{subB.baseScore.toFixed(1)}</span>
-                              <span className={`sev-tag-sm sev-${subB.severity.toLowerCase()}`}>
-                                {subB.severity}
-                              </span>
-                              <code className="vector-snippet">{subB.vectorString}</code>
-                            </div>
-                          ) : (
-                            <span className="text-muted italic">Belum mengisi</span>
-                          )}
-                        </td>
+
+                        {/* Columns for each active evaluator */}
+                        {activeReviewers.map((rName, rIdx) => {
+                          const sub = reviewerSubs[rIdx];
+                          return (
+                            <td key={rName}>
+                              {sub ? (
+                                <div className="reviewer-score-cell">
+                                  <div className="score-sev-row">
+                                    <span className="score-badge-sm">{sub.baseScore.toFixed(1)}</span>
+                                    <span className={`sev-tag-sm sev-${sub.severity.toLowerCase()}`}>
+                                      {sub.severity.toUpperCase()}
+                                    </span>
+                                  </div>
+                                  <code className="vector-snippet">{sub.vectorString}</code>
+                                  <div className="mini-chips-row">
+                                    {metricKeys.map(k => (
+                                      <span
+                                        key={k}
+                                        className={`mini-chip ${diffMetrics.includes(k) && allFilled ? "chip-diff" : ""}`}
+                                        title={`${k}: ${sub.metrics[k]}`}
+                                      >
+                                        {k}:{sub.metrics[k]}
+                                      </span>
+                                    ))}
+                                  </div>
+                                  <p className="evaluator-justification-preview" title={sub.justification}>
+                                    &ldquo;{sub.justification || "Tidak ada justifikasi"}&rdquo;
+                                  </p>
+                                </div>
+                              ) : (
+                                <span className="text-muted italic">Belum mengisi</span>
+                              )}
+                            </td>
+                          );
+                        })}
+
+                        {/* Status Column */}
                         <td>
                           {status === "CONSENSUS" && (
                             <span className="status-badge consensus">
-                              <CheckCircle2 size={12} /> Konsensus Cocok
+                              <CheckCircle2 size={12} /> Sesuai (Vektor Identik)
                             </span>
                           )}
                           {status === "DISCREPANCY" && (
-                            <span className="status-badge discrepancy">
-                              <AlertTriangle size={12} /> Beda Pendapat
-                            </span>
+                            <div className="status-discrepancy-block">
+                              <span className="status-badge discrepancy">
+                                <AlertTriangle size={12} /> Terdapat Perbedaan
+                              </span>
+                              {diffMetrics.length > 0 && (
+                                <span className="diff-metrics-text">
+                                  Beda metrik: <strong>{diffMetrics.join(", ")}</strong>
+                                </span>
+                              )}
+                            </div>
                           )}
                           {status === "PENDING" && (
-                            <span className="status-badge pending">Menunggu Respon</span>
+                            <span className="status-badge pending">
+                              Menunggu ({filledCount}/{activeReviewers.length} mengisi)
+                            </span>
                           )}
                         </td>
-                        <td>
-                          {diffs.length > 0 ? (
-                            <div className="diff-tags-container">
-                              {diffs.map((d, i) => (
-                                <span key={i} className="diff-tag">
-                                  {d}
-                                </span>
-                              ))}
-                            </div>
-                          ) : status === "CONSENSUS" ? (
-                            <span className="text-emerald text-xs">Vektor 100% Identik</span>
-                          ) : (
-                            <span className="text-muted text-xs">-</span>
-                          )}
+
+                        {/* Action Column */}
+                        <td className="text-center">
+                          <button
+                            type="button"
+                            className="btn-inspect-detail"
+                            onClick={() => setInspectCaseId(c.caseId)}
+                            title="Buka perbandingan metrik dan justifikasi mendalam"
+                          >
+                            <Eye size={14} /> Detail
+                          </button>
                         </td>
                       </tr>
                     );
@@ -486,7 +566,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
                     <th>Base Score</th>
                     <th>Severity</th>
                     <th>Vector String</th>
-                    <th>Justifikasi Catatan Pakar</th>
+                    <th>Justifikasi Teknis</th>
                     <th className="text-center">Aksi</th>
                   </tr>
                 </thead>
@@ -494,7 +574,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
                   {submissions.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="text-center py-8 text-muted">
-                        Belum ada respon yang dikirimkan.
+                        Belum ada respon evaluasi yang tersimpan di sistem.
                       </td>
                     </tr>
                   ) : (
@@ -554,8 +634,9 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
                 <div>
                   <h3 className="cloud-card-title">Koneksi Database Cloud (Supabase)</h3>
                   <p className="cloud-card-desc">
-                    Jika Anda ingin hasil penilaian langsung tersinkronisasi ke PostgreSQL cloud gratis,
-                    masukkan URL dan Anon Key dari proyek Supabase Anda di bawah ini:
+                    Penilaian dari tiga evaluator pada perangkat berbeda akan langsung tersimpan di
+                    tabel PostgreSQL Supabase. Anda dapat mengisi konfigurasi di bawah ini atau melalui
+                    environment variable (<code>VITE_SUPABASE_URL</code> &amp; <code>VITE_SUPABASE_ANON_KEY</code>) pada dashboard Vercel.
                   </p>
                 </div>
               </div>
@@ -604,7 +685,9 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
                 </div>
 
                 <div className="sql-schema-guide">
-                  <h4 className="sql-guide-title">SQL Query untuk Membuat Tabel di Supabase:</h4>
+                  <h4 className="sql-guide-title">
+                    <KeyRound size={15} className="inline-icon text-accent" /> Skema SQL Tabel Supabase (4 Kasus):
+                  </h4>
                   <pre className="sql-pre">
                     <code>{`CREATE TABLE cvss_reviews (
   id TEXT PRIMARY KEY,
@@ -622,17 +705,152 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
   base_score NUMERIC(3,1) NOT NULL,
   severity TEXT NOT NULL,
   vector_string TEXT NOT NULL,
-  justification TEXT,
+  justification TEXT NOT NULL,
   submitted_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   CONSTRAINT unique_case_reviewer UNIQUE(case_id, reviewer_name)
 );`}</code>
                   </pre>
+                  <p className="text-xs text-muted mt-2">
+                    Catatan: Constraint <code>UNIQUE(case_id, reviewer_name)</code> memastikan penilaian setiap evaluator tersimpan secara independen tanpa menimpa evaluator lain.
+                  </p>
                 </div>
               </div>
             </div>
           </div>
         )}
       </div>
+
+      {/* DETAILED SIDE-BY-SIDE MODAL FOR SELECTED CASE */}
+      {inspectedCase && (
+        <div className="modal-overlay" onClick={() => setInspectCaseId(null)}>
+          <div
+            className="modal-dialog modal-dialog-lg"
+            onClick={e => e.stopPropagation()}
+            style={{ maxWidth: "900px" }}
+          >
+            <div className="modal-header">
+              <div className="modal-title-row">
+                <Users size={20} className="text-accent" />
+                <h3 className="modal-title">
+                  Detail Komparasi Penilai: {inspectedCase.caseId} ({inspectedCase.targetAppNameSanitized})
+                </h3>
+              </div>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setInspectCaseId(null)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div className="modal-case-summary-card">
+                <span className="summary-title">{inspectedCase.findingTitle}</span>
+                <span className="summary-subtitle">
+                  Ref Kontrol: <strong>{inspectedCase.controlId}</strong> &bull; {inspectedCase.masvsCategory}
+                </span>
+              </div>
+
+              {/* Side-by-Side 8 Metrics Comparison Table */}
+              <h4 className="detail-section-title">Perbandingan 8 Parameter Metrik Dasar:</h4>
+              <div className="table-responsive">
+                <table className="detail-metrics-table">
+                  <thead>
+                    <tr>
+                      <th>Metrik</th>
+                      {activeReviewers.map(rName => (
+                        <th key={rName}>{rName}</th>
+                      ))}
+                      <th>Status Metrik</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {metricKeys.map(k => {
+                      const vals = activeReviewers.map(rName => {
+                        const sub = submissions.find(
+                          s => s.caseId === inspectedCase.caseId && s.reviewerName === rName
+                        );
+                        return sub ? sub.metrics[k] : "-";
+                      });
+
+                      const nonDash = vals.filter(v => v !== "-");
+                      const allSame = nonDash.length > 0 && nonDash.every(v => v === nonDash[0]);
+                      const hasDiscrepancy = nonDash.length >= 2 && !allSame;
+
+                      return (
+                        <tr
+                          key={k}
+                          className={hasDiscrepancy ? "metric-row-discrepancy" : "metric-row-same"}
+                        >
+                          <td>
+                            <strong>{k}</strong>
+                          </td>
+                          {vals.map((v, i) => (
+                            <td key={i} className="font-mono font-bold">
+                              {v}
+                            </td>
+                          ))}
+                          <td>
+                            {hasDiscrepancy ? (
+                              <span className="text-amber-500 font-semibold text-xs">
+                                <AlertTriangle size={12} className="inline-icon" /> Berbeda
+                              </span>
+                            ) : nonDash.length >= 2 ? (
+                              <span className="text-emerald font-semibold text-xs">
+                                <Check size={12} className="inline-icon" /> Sesuai
+                              </span>
+                            ) : (
+                              <span className="text-muted text-xs">Belum Lengkap</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Side-by-Side Evaluator Justifications */}
+              <h4 className="detail-section-title mt-4">Justifikasi Tertulis dari Setiap Evaluator:</h4>
+              <div className="justifications-side-grid">
+                {activeReviewers.map(rName => {
+                  const sub = submissions.find(
+                    s => s.caseId === inspectedCase.caseId && s.reviewerName === rName
+                  );
+                  return (
+                    <div key={rName} className="justification-expert-card">
+                      <div className="justification-card-header">
+                        <strong className="justification-author">{rName}</strong>
+                        {sub && (
+                          <span className="justification-score-badge">
+                            Skor: {sub.baseScore.toFixed(1)} ({sub.severity})
+                          </span>
+                        )}
+                      </div>
+                      <p className="justification-card-text">
+                        {sub?.justification || (
+                          <span className="text-muted italic">Belum mengisi justifikasi</span>
+                        )}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => setInspectCaseId(null)}
+              >
+                Tutup Detail
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

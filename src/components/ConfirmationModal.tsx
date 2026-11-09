@@ -109,12 +109,10 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
             </div>
           </div>
 
-          {justification && (
-            <div className="modal-justification-box">
-              <span className="justification-heading">Justifikasi / Catatan Pakar:</span>
-              <p className="justification-text">{justification}</p>
-            </div>
-          )}
+          <div className="modal-justification-box">
+            <span className="justification-heading">Justifikasi Teknis &amp; Rasionalisasi Skor (Wajib):</span>
+            <p className="justification-text">{justification}</p>
+          </div>
         </div>
 
         <div className="modal-footer">

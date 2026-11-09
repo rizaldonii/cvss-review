@@ -109,9 +109,9 @@ export async function saveSubmission(
   const client = getSupabaseClient();
   if (!client) {
     return {
-      success: true,
+      success: false,
       cloudSynced: false,
-      message: "Data tersimpan lokal di browser (Supabase belum dihubungkan)."
+      message: "Data tersimpan di penyimpanan lokal browser, namun belum terkirim ke database cloud peneliti (Konfigurasi Supabase belum disetel)."
     };
   }
 
@@ -142,22 +142,22 @@ export async function saveSubmission(
     if (error) {
       console.warn("Supabase upsert warning:", error);
       return {
-        success: true,
+        success: false,
         cloudSynced: false,
-        message: `Tersimpan di browser, gagal sinkronisasi cloud: ${error.message}`
+        message: `Tersimpan di browser lokal, namun GAGAL terkirim ke database cloud: ${error.message}`
       };
     }
 
     return {
       success: true,
       cloudSynced: true,
-      message: "Berhasil disimpan dan disinkronkan ke database Supabase!"
+      message: "Penilaian berhasil disimpan dan terkirim ke database Supabase!"
     };
   } catch (err: any) {
     return {
-      success: true,
+      success: false,
       cloudSynced: false,
-      message: `Tersimpan di browser, koneksi cloud gagal: ${err?.message || "Unknown error"}`
+      message: `Tersimpan di browser lokal, koneksi database cloud gagal: ${err?.message || "Unknown error"}`
     };
   }
 }
@@ -292,12 +292,12 @@ export function exportToCsv(submissions: CaseEvaluationSubmission[]): string {
 }
 
 export function exportToLatex(submissions: CaseEvaluationSubmission[]): string {
-  // Group by Case ID for a neat academic thesis table
-  const caseIds = ["CASE-01", "CASE-02", "CASE-03", "CASE-04", "CASE-05", "CASE-06"];
+  // Group by Case ID for 4 vulnerability groups
+  const caseIds = ["CASE-01", "CASE-02", "CASE-03", "CASE-04"];
   
   let latex = `\\begin{table}[htbp]
 \\centering
-\\caption{Rekapitulasi Penilaian CVSS v3.1 oleh Panel Pakar}
+\\caption{Rekapitulasi Penilaian CVSS v3.1 oleh Tiga Evaluator (4 Kelompok Kerentanan)}
 \\label{tab:rekap-cvss-expert}
 \\resizebox{\\textwidth}{!}{%
 \\begin{tabular}{|c|l|l|c|c|l|}

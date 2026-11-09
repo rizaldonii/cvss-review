@@ -106,6 +106,11 @@ export const CaseViewer: React.FC<CaseViewerProps> = ({
             <div key={step.stepNumber} className="step-item">
               <div className="step-num-bubble">{step.stepNumber}</div>
               <div className="step-content">
+                {step.testCaseRef && (
+                  <div className="step-ref-row">
+                    <span className="step-testcase-badge">{step.testCaseRef}</span>
+                  </div>
+                )}
                 <div className="step-desc">{step.description}</div>
                 {step.commandOrAction && (
                   <div className="step-command-box">
@@ -136,6 +141,9 @@ export const CaseViewer: React.FC<CaseViewerProps> = ({
                 onClick={() => setActiveImageZoom(img)}
                 title="Klik untuk memperbesar gambar"
               >
+                {img.testCaseRef && (
+                  <div className="image-card-ref-badge">{img.testCaseRef}</div>
+                )}
                 <div className="image-preview-wrapper">
                   <img src={img.url} alt={img.caption} className="evidence-img" />
                   <div className="image-zoom-overlay">
@@ -184,7 +192,12 @@ export const CaseViewer: React.FC<CaseViewerProps> = ({
           {testCase.evidenceSnippets.map((snippet, sIdx) => (
             <div key={sIdx} className="evidence-block">
               <div className="evidence-header">
-                <span className="evidence-filename">{snippet.title}</span>
+                <div className="snippet-title-group">
+                  <span className="evidence-filename">{snippet.title}</span>
+                  {snippet.testCaseRef && (
+                    <span className="snippet-testcase-badge">{snippet.testCaseRef}</span>
+                  )}
+                </div>
                 <button
                   type="button"
                   className="copy-evidence-btn"

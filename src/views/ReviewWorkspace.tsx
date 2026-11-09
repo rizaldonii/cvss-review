@@ -16,7 +16,10 @@ import {
   ChevronRight,
   Send,
   AlertCircle,
-  CheckCircle2
+  CheckCircle2,
+  BookOpen,
+  RefreshCw,
+  AlertTriangle
 } from "lucide-react";
 
 interface ReviewWorkspaceProps {
@@ -26,6 +29,7 @@ interface ReviewWorkspaceProps {
   onCaseChange: (index: number) => void;
   onFinishAllCases: () => void;
   onRefreshCompleted: () => void;
+  onOpenGuide: () => void;
 }
 
 const EMPTY_METRICS: CVSSv31Metrics = {
@@ -45,7 +49,8 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
   currentCaseIndex,
   onCaseChange,
   onFinishAllCases,
-  onRefreshCompleted
+  onRefreshCompleted,
+  onOpenGuide
 }) => {
   const currentCase = cases[currentCaseIndex];
 
@@ -53,7 +58,11 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
   const [justification, setJustification] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [saveSuccessMsg, setSaveSuccessMsg] = useState("");
+  const [saveStatus, setSaveStatus] = useState<{
+    type: "success" | "warning" | "error";
+    message: string;
+    canProceedAnyway?: boolean;
+  } | null>(null);
 
   // Load existing submission if reviewer already rated this case
   useEffect(() => {
@@ -70,10 +79,12 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
       setMetrics(EMPTY_METRICS);
       setJustification("");
     }
-    setSaveSuccessMsg("");
+    setSaveStatus(null);
   }, [currentCase.caseId, reviewer.name]);
 
   const calculationResult = calculateCVSSv31(metrics);
+  const isJustificationFilled = justification.trim().length > 0;
+  const isReadyToSubmit = calculationResult.isComplete && isJustificationFilled;
 
   const handleMetricChange = (metricKey: keyof CVSSv31Metrics, value: any) => {
     setMetrics(prev => ({
@@ -83,12 +94,12 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
   };
 
   const handleOpenConfirm = () => {
-    if (!calculationResult.isComplete) return;
+    if (!isReadyToSubmit) return;
     setIsModalOpen(true);
   };
 
   const handleConfirmSave = async () => {
-    if (!calculationResult.isComplete) return;
+    if (!isReadyToSubmit) return;
 
     setIsSubmitting(true);
     const submission: CaseEvaluationSubmission = {
@@ -113,21 +124,41 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
       submittedAt: new Date().toISOString()
     };
 
-    await saveSubmission(submission);
+    const res = await saveSubmission(submission);
     setIsSubmitting(false);
     setIsModalOpen(false);
     onRefreshCompleted();
 
-    setSaveSuccessMsg("Penilaian kasus ini berhasil disimpan!");
+    if (res.cloudSynced) {
+      setSaveStatus({
+        type: "success",
+        message: "Penilaian berhasil disimpan dan terkirim ke database cloud peneliti!"
+      });
 
-    // Auto navigate to next case or finish view
-    setTimeout(() => {
-      if (currentCaseIndex < cases.length - 1) {
-        onCaseChange(currentCaseIndex + 1);
-      } else {
-        onFinishAllCases();
-      }
-    }, 1200);
+      // Auto advance to next case or finish view
+      setTimeout(() => {
+        if (currentCaseIndex < cases.length - 1) {
+          onCaseChange(currentCaseIndex + 1);
+        } else {
+          onFinishAllCases();
+        }
+      }, 1200);
+    } else {
+      // Failed cloud sync: alert user explicitly
+      setSaveStatus({
+        type: "warning",
+        message: res.message,
+        canProceedAnyway: true
+      });
+    }
+  };
+
+  const handleProceedManually = () => {
+    if (currentCaseIndex < cases.length - 1) {
+      onCaseChange(currentCaseIndex + 1);
+    } else {
+      onFinishAllCases();
+    }
   };
 
   return (
@@ -145,10 +176,50 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
         {/* Right Pane: Interactive CVSS Calculator and Justification */}
         <section className="workspace-right-pane">
           <div className="sticky-scoring-column">
-            {saveSuccessMsg && (
-              <div className="success-toast-banner">
-                <CheckCircle2 size={18} className="text-emerald" />
-                <span>{saveSuccessMsg}</span>
+            {/* Guide Trigger Button */}
+            <div className="guide-shortcut-bar">
+              <button
+                type="button"
+                className="btn-open-guide-inline"
+                onClick={onOpenGuide}
+                title="Buka panduan standar penilaian CVSS v3.1"
+              >
+                <BookOpen size={15} />
+                <span>Buka Panduan Penilaian CVSS v3.1</span>
+              </button>
+            </div>
+
+            {/* Cloud Sync Status Banner */}
+            {saveStatus && (
+              <div className={`status-toast-banner status-${saveStatus.type}`}>
+                <div className="status-toast-content">
+                  {saveStatus.type === "success" ? (
+                    <CheckCircle2 size={18} className="text-emerald shrink-0" />
+                  ) : (
+                    <AlertTriangle size={18} className="text-warning shrink-0" />
+                  )}
+                  <span className="status-toast-text">{saveStatus.message}</span>
+                </div>
+                {saveStatus.canProceedAnyway && (
+                  <div className="status-toast-actions">
+                    <button
+                      type="button"
+                      className="btn-retry-cloud"
+                      onClick={handleConfirmSave}
+                      disabled={isSubmitting}
+                    >
+                      <RefreshCw size={13} className={isSubmitting ? "animate-spin" : ""} />
+                      <span>Coba Kirim Ulang ke Cloud</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-proceed-anyway"
+                      onClick={handleProceedManually}
+                    >
+                      <span>Tetap Lanjut (Hanya Lokal)</span>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -158,28 +229,35 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
             {/* 8 Base Metrics Segmented Selectors with Hover Tooltips */}
             <CvssSelector metrics={metrics} onChange={handleMetricChange} />
 
-            {/* Qualitative Justification Textarea */}
+            {/* Qualitative Justification Textarea (Mandatory) */}
             <div className="justification-container">
-              <label htmlFor="expert-justification" className="justification-label">
-                Justifikasi Teknis &amp; Catatan Evaluasi (Rasionalisasi Skor)
-              </label>
+              <div className="justification-label-row">
+                <label htmlFor="expert-justification" className="justification-label">
+                  Justifikasi Teknis &amp; Catatan Evaluasi <span className="required-star">*</span>
+                </label>
+                <span className="justification-badge-required">Wajib Diisi</span>
+              </div>
               <textarea
                 id="expert-justification"
-                className="justification-textarea"
-                rows={3}
-                placeholder="Berikan argumentasi teknis penentuan metrik di atas berdasarkan analisis bukti POC (misal: alasan pemilihan Attack Vector Local vs Network, atau tingkat keparahan dampak terhadap data pribadi)..."
+                className={`justification-textarea ${!isJustificationFilled && calculationResult.isComplete ? "required-highlight" : ""}`}
+                rows={4}
+                placeholder="Wajib diisi: Berikan argumentasi teknis penentuan metrik di atas berdasarkan analisis bukti POC (misal: pertimbangan vektor serangan, prasyarat akses, Scope Unchanged vs Changed, serta estimasi dampak kerahasiaan/integritas)..."
                 value={justification}
                 onChange={e => setJustification(e.target.value)}
               />
+              <span className="justification-hint">
+                Jelaskan dasar rasionalisasi pemilihan nilai metrik di atas untuk mempermudah perbandingan antar-evaluator.
+              </span>
             </div>
 
-            {/* Incomplete Metrics Warning Banner */}
-            {!calculationResult.isComplete && (
+            {/* Incomplete Warning Banner */}
+            {!isReadyToSubmit && (
               <div className="incomplete-alert-banner">
                 <AlertCircle size={16} />
                 <span>
-                  Wajib memilih seluruh <strong>8 parameter metrik dasar</strong> sebelum menyimpan
-                  evaluasi.
+                  {!calculationResult.isComplete
+                    ? "Wajib memilih seluruh 8 parameter metrik dasar sebelum menyimpan evaluasi."
+                    : "Wajib mengisi kolom Justifikasi Teknis sebelum menyimpan evaluasi."}
                 </span>
               </div>
             )}
@@ -198,14 +276,14 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
 
               <button
                 type="button"
-                className={`btn-nav-submit ${calculationResult.isComplete ? "ready" : "disabled"}`}
+                className={`btn-nav-submit ${isReadyToSubmit ? "ready" : "disabled"}`}
                 onClick={handleOpenConfirm}
-                disabled={!calculationResult.isComplete}
+                disabled={!isReadyToSubmit}
               >
                 {currentCaseIndex === cases.length - 1 ? (
                   <>
                     <Send size={16} />
-                    <span>Simpan &amp; Selesaikan Evaluasi</span>
+                    <span>Simpan &amp; Selesaikan Evaluasi (4/4)</span>
                   </>
                 ) : (
                   <>

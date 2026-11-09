@@ -1,4 +1,4 @@
-import { roundUp, calculateCVSSv31 } from "./cvssCalculator.ts";
+import { calculateCVSSv31 } from "./cvssCalculator.ts";
 
 console.log("=== Running CVSS v3.1 Verification Suite ===");
 

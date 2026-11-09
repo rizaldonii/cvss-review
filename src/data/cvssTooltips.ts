@@ -5,35 +5,35 @@ export const CVSS_METRIC_DEFINITIONS: Record<keyof CVSSv31Metrics, MetricDefinit
     metricId: "AV",
     name: "Attack Vector (AV)",
     category: "Exploitability",
-    description: "Reflects the context and logical proximity by which vulnerability exploitation is possible.",
+    description: "Merefleksikan konteks dan kedekatan logis di mana eksploitasi kerentanan dapat dilakukan.",
     options: [
       {
         code: "N",
         label: "Network",
         badge: "N",
         firstOfficialText: "The vulnerable component is bound to the network stack and the set of possible attackers extends beyond the other options up to and including the entire Internet.",
-        mobileEvaluationContext: "Exploitable remotely over public cellular or Internet without requiring proximity or shared Wi-Fi."
+        mobileEvaluationContext: "Dapat dieksploitasi dari jarak jauh melalui jaringan internet/seluler tanpa mensyaratkan penyerang berada di subnet atau jangkauan radio nirkabel yang sama."
       },
       {
         code: "A",
         label: "Adjacent",
         badge: "A",
-        firstOfficialText: "The vulnerable component is bound to the network stack, but the attack is limited at the protocol level to a logically adjacent topology (e.g. local subnet, Bluetooth, IEEE 802.11).",
-        mobileEvaluationContext: "Requires attacker on the same Wi-Fi hotspot / LAN (e.g. MitM cleartext eavesdropping), BLE range, or NFC radius."
+        firstOfficialText: "The vulnerable component is bound to the network stack, but the attack is limited at the protocol level to a logically adjacent topology.",
+        mobileEvaluationContext: "Memerlukan penyerang berada pada domain jaringan bersama (misal: Wi-Fi/LAN lokal yang sama) atau dalam jangkauan fisik nirkabel terbatas (Bluetooth, BLE, NFC)."
       },
       {
         code: "L",
         label: "Local",
         badge: "L",
-        firstOfficialText: "The vulnerable component is not bound to the network stack and the attacker's path is via read/write/execute capabilities locally (keyboard, console, local interactive shell, or local apps).",
-        mobileEvaluationContext: "Exploitable via ADB shell, another malicious app on the same Android device, or local system log reading."
+        firstOfficialText: "The vulnerable component is not bound to the network stack and the attacker's path is via read/write/execute capabilities locally.",
+        mobileEvaluationContext: "Eksploitasi memerlukan akses lokal pada perangkat (misalnya melalui antarmuka ADB shell, aplikasi lokal lain pada perangkat yang sama, atau pembacaan berkas log/penyimpanan lokal)."
       },
       {
         code: "P",
         label: "Physical",
         badge: "P",
         firstOfficialText: "The attack requires the attacker to physically touch or manipulate the vulnerable component.",
-        mobileEvaluationContext: "Requires physical possession of an unlocked mobile hardware unit."
+        mobileEvaluationContext: "Memerlukan penyerang memegang atau memanipulasi perangkat keras fisik ponsel secara langsung."
       }
     ]
   },
@@ -41,21 +41,21 @@ export const CVSS_METRIC_DEFINITIONS: Record<keyof CVSSv31Metrics, MetricDefinit
     metricId: "AC",
     name: "Attack Complexity (AC)",
     category: "Exploitability",
-    description: "Describes the conditions beyond the attacker's control that must exist to exploit the vulnerability.",
+    description: "Menggambarkan kondisi di luar kendali penyerang yang harus dipenuhi agar eksploitasi dapat berhasil.",
     options: [
       {
         code: "L",
         label: "Low",
         badge: "L",
         firstOfficialText: "Specialized access conditions or extenuating circumstances do not exist. An attacker can expect repeatable success against the vulnerable component.",
-        mobileEvaluationContext: "Deterministic and easily repeatable; no race condition, custom cryptographic bypass, or unpredictable timing needed."
+        mobileEvaluationContext: "Eksploitasi bersifat deterministik dan dapat diulang dengan andal tanpa memerlukan kondisi balapan (race condition) atau rekayasa kriptografi khusus."
       },
       {
         code: "H",
         label: "High",
         badge: "H",
         firstOfficialText: "A successful attack depends on conditions outside the attacker's control (e.g. winning a race condition, overcoming advanced ASLR/DEP, or obtaining target-specific secrets).",
-        mobileEvaluationContext: "Requires winning race conditions, guessing high-entropy keys, or overcoming non-standard system barriers."
+        mobileEvaluationContext: "Eksploitasi bergantung pada faktor eksternal di luar kendali langsung penyerang (misal: kondisi waktu/race conditions khusus, perlindungan sistem non-standar, atau pengumpulan rahasia acak)."
       }
     ]
   },
@@ -63,28 +63,28 @@ export const CVSS_METRIC_DEFINITIONS: Record<keyof CVSSv31Metrics, MetricDefinit
     metricId: "PR",
     name: "Privileges Required (PR)",
     category: "Exploitability",
-    description: "Describes the level of privileges an attacker must possess before successfully exploiting the vulnerability.",
+    description: "Menggambarkan tingkat hak akses yang harus dimiliki penyerang sebelum melakukan eksploitasi.",
     options: [
       {
         code: "N",
         label: "None",
         badge: "N",
         firstOfficialText: "The attacker is unauthorized prior to attack, and therefore does not require any access to the vulnerable system.",
-        mobileEvaluationContext: "No app account, login credentials, or special Android OS permissions needed."
+        mobileEvaluationContext: "Penyerang tidak memerlukan otentikasi awal, akun pengguna, atau hak akses khusus apa pun pada aplikasi."
       },
       {
         code: "L",
         label: "Low",
         badge: "L",
         firstOfficialText: "The attacker requires privileges that provide basic user capabilities that could normally affect only settings and files owned by a user.",
-        mobileEvaluationContext: "Requires a standard logged-in user account or normal third-party Android application installation."
+        mobileEvaluationContext: "Penyerang memerlukan hak akses dasar pengguna biasa (misalnya memiliki akun pengguna terdaftar pada aplikasi atau instalasi aplikasi biasa)."
       },
       {
         code: "H",
         label: "High",
         badge: "H",
         firstOfficialText: "The attacker requires privileges that provide significant control over the vulnerable component (e.g. administrative, root, or device owner).",
-        mobileEvaluationContext: "Requires rooted Android device or system-level administrative signatures."
+        mobileEvaluationContext: "Penyerang memerlukan hak akses istimewa/administratif (seperti akses root sistem Android, device owner, atau administrator server)."
       }
     ]
   },
@@ -92,21 +92,21 @@ export const CVSS_METRIC_DEFINITIONS: Record<keyof CVSSv31Metrics, MetricDefinit
     metricId: "UI",
     name: "User Interaction (UI)",
     category: "Exploitability",
-    description: "Captures the requirement for a legitimate user, other than the attacker, to participate in the compromise.",
+    description: "Menilai apakah keberhasilan eksploitasi membutuhkan partisipasi dari pengguna sah selain penyerang.",
     options: [
       {
         code: "N",
         label: "None",
         badge: "N",
         firstOfficialText: "The vulnerable system can be exploited without interaction from any user.",
-        mobileEvaluationContext: "Vulnerability triggers passively or can be harvested without user action."
+        mobileEvaluationContext: "Kerentanan dapat dieksploitasi secara pasif tanpa memerlukan tindakan apa pun dari pengguna sah aplikasi."
       },
       {
         code: "R",
         label: "Required",
         badge: "R",
-        firstOfficialText: "Successful exploitation requires a user to take some action before the vulnerability can be exploited (e.g. tapping a link, navigating to a view).",
-        mobileEvaluationContext: "Requires the legitimate victim to open the app, tap a specific menu (e.g. e-KTM page), or click a payload."
+        firstOfficialText: "Successful exploitation requires a user to take some action before the vulnerability can be exploited.",
+        mobileEvaluationContext: "Eksploitasi membutuhkan tindakan dari pengguna target (misalnya membuka aplikasi, mengakses menu/fitur tertentu, atau melakukan tindakan interaktif)."
       }
     ]
   },
@@ -114,21 +114,21 @@ export const CVSS_METRIC_DEFINITIONS: Record<keyof CVSSv31Metrics, MetricDefinit
     metricId: "S",
     name: "Scope (S)",
     category: "Scope",
-    description: "Captures whether a vulnerability in one component impacts resources beyond its security authority.",
+    description: "Menilai apakah dampak eksploitasi meluas ke komponen di luar otoritas keamanan komponen yang rentan.",
     options: [
       {
         code: "U",
         label: "Unchanged",
         badge: "U",
         firstOfficialText: "An exploited vulnerability can only affect resources managed by the same security authority.",
-        mobileEvaluationContext: "Impact is strictly confined within the mobile application sandbox and its local data directory."
+        mobileEvaluationContext: "Dampak eksploitasi terbatas pada ruang lingkup aplikasi mobile itu sendiri (misalnya direktori penyimpanan lokal sandbox aplikasi)."
       },
       {
         code: "C",
         label: "Changed",
         badge: "C",
         firstOfficialText: "An exploited vulnerability can affect resources beyond the security scope managed by the security authority of the vulnerable component.",
-        mobileEvaluationContext: "Impact breaches the sandbox to compromise other apps, the underlying Android OS, or remote academic backend databases."
+        mobileEvaluationContext: "Dampak eksploitasi melampaui otoritas keamanan aplikasi mobile, memengaruhi komponen lain seperti sistem operasi Android, aplikasi lain, atau layanan backend eksternal."
       }
     ]
   },
@@ -136,28 +136,28 @@ export const CVSS_METRIC_DEFINITIONS: Record<keyof CVSSv31Metrics, MetricDefinit
     metricId: "C",
     name: "Confidentiality (C)",
     category: "Impact",
-    description: "Measures the impact to the confidentiality of information resources.",
+    description: "Mengukur tingkat dampak terhadap kerahasiaan data atau sumber daya informasi.",
     options: [
       {
         code: "N",
         label: "None",
         badge: "N",
         firstOfficialText: "There is no loss of confidentiality within the impacted component.",
-        mobileEvaluationContext: "No sensitive or private data disclosed."
+        mobileEvaluationContext: "Tidak ada informasi rahasia atau data sensitif yang bocor atau dapat diakses oleh pihak tidak berhak."
       },
       {
         code: "L",
         label: "Low",
         badge: "L",
         firstOfficialText: "There is some loss of confidentiality. Access to some restricted information is obtained, but the attacker does not have control over what is obtained.",
-        mobileEvaluationContext: "Partial disclosure of non-critical metadata, debug strings, or architectural identifiers."
+        mobileEvaluationContext: "Terjadi kebocoran sebagian informasi atau data non-kritis (misal: metadata sistem, string referensi, atau informasi terbatas)."
       },
       {
         code: "H",
         label: "High",
         badge: "H",
         firstOfficialText: "There is a total loss of confidentiality, resulting in all resources being divulged, or direct disclosure of critical confidential information.",
-        mobileEvaluationContext: "Direct exposure of Personally Identifiable Information (PII), password hashes, or active session authorization tokens."
+        mobileEvaluationContext: "Terjadi kebocoran menyeluruh atau terungkapnya informasi sensitif/kritis (misal: data pribadi lengkap/PII, token autentikasi sesi aktif, atau hash kredensial)."
       }
     ]
   },
@@ -165,28 +165,28 @@ export const CVSS_METRIC_DEFINITIONS: Record<keyof CVSSv31Metrics, MetricDefinit
     metricId: "I",
     name: "Integrity (I)",
     category: "Impact",
-    description: "Measures the impact to the trustworthiness and veracity of information.",
+    description: "Mengukur tingkat dampak terhadap keutuhan, keaslian, dan keterpercayaan informasi.",
     options: [
       {
         code: "N",
         label: "None",
         badge: "N",
         firstOfficialText: "There is no loss of integrity within the impacted component.",
-        mobileEvaluationContext: "No data or execution flow can be modified."
+        mobileEvaluationContext: "Tidak ada data, konfigurasi, atau alur eksekusi aplikasi yang dapat dimodifikasi oleh penyerang."
       },
       {
         code: "L",
         label: "Low",
         badge: "L",
         firstOfficialText: "Modification of data is possible, but the attacker does not have control over the consequence, or the scope of modification is limited.",
-        mobileEvaluationContext: "Attacker can modify non-critical local settings, cache values, or UI flags."
+        mobileEvaluationContext: "Penyerang dapat mengubah sebagian data atau pengaturan non-kritis, tetapi tidak dapat mengendalikan sistem secara menyeluruh."
       },
       {
         code: "H",
         label: "High",
         badge: "H",
         firstOfficialText: "There is a total compromise of system integrity. The attacker can modify any/all files, data, or critical system behavior.",
-        mobileEvaluationContext: "Attacker can forge academic records, alter attendance, or tamper with core server data using stolen tokens."
+        mobileEvaluationContext: "Terjadi kompromi integritas total; penyerang dapat memodifikasi data penting, memanipulasi rekaman data, atau mengubah perilaku inti sistem."
       }
     ]
   },
@@ -194,28 +194,28 @@ export const CVSS_METRIC_DEFINITIONS: Record<keyof CVSSv31Metrics, MetricDefinit
     metricId: "A",
     name: "Availability (A)",
     category: "Impact",
-    description: "Measures the impact to the availability and uptime of the impacted component.",
+    description: "Mengukur tingkat dampak terhadap ketersediaan dan aksesibilitas layanan.",
     options: [
       {
         code: "N",
         label: "None",
         badge: "N",
         firstOfficialText: "There is no impact to availability within the impacted component.",
-        mobileEvaluationContext: "Application uptime and accessibility remain completely unaffected."
+        mobileEvaluationContext: "Ketersediaan dan responsivitas aplikasi/layanan tetap berjalan normal tanpa gangguan."
       },
       {
         code: "L",
         label: "Low",
         badge: "L",
         firstOfficialText: "Performance is reduced or there are interruptions in resource availability, but no complete outage occurs.",
-        mobileEvaluationContext: "Temporary sluggishness, non-fatal exceptions, or minor transient delays."
+        mobileEvaluationContext: "Terjadi penurunan performa sementara, kelambatan respons, atau gangguan parsial tanpa penghentian total layanan."
       },
       {
         code: "H",
         label: "High",
         badge: "H",
         firstOfficialText: "There is a total loss of availability, resulting in the attacker being able to deny all access to resources.",
-        mobileEvaluationContext: "Persistent app crash on launch (Denial of Service), corrupted storage causing app bricking, or backend service shutdown."
+        mobileEvaluationContext: "Terjadi penghentian layanan secara total (Denial of Service), aplikasi crash permanen, atau sumber daya utama menjadi tidak dapat diakses."
       }
     ]
   }
