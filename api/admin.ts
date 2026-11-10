@@ -1,12 +1,167 @@
 import crypto from "node:crypto";
-import {
-  isD1Configured,
-  isSupabaseConfigured,
-  fetchAllV2Submissions,
-  deleteSubmissionsFromDb,
-  upsertSubmission,
-  getSupabaseClient
-} from "./_db.ts";
+import { createClient } from "@supabase/supabase-js";
+
+function isD1Configured(): boolean {
+  return Boolean(
+    process.env.CLOUDFLARE_ACCOUNT_ID &&
+    process.env.CLOUDFLARE_D1_DATABASE_ID &&
+    process.env.CLOUDFLARE_API_TOKEN
+  );
+}
+
+function isSupabaseConfigured(): boolean {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    process.env.VITE_SUPABASE_ANON_KEY;
+  return Boolean(url && key);
+}
+
+function getSupabaseClient() {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    process.env.VITE_SUPABASE_ANON_KEY;
+
+  if (!url || !key) return null;
+  return createClient(url, key);
+}
+
+async function queryD1(sql: string, params: any[] = []): Promise<any[]> {
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const databaseId = process.env.CLOUDFLARE_D1_DATABASE_ID;
+  const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+
+  if (!accountId || !databaseId || !apiToken) {
+    throw new Error(
+      "Konfigurasi Cloudflare D1 belum lengkap (CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_D1_DATABASE_ID, atau CLOUDFLARE_API_TOKEN belum disetel)."
+    );
+  }
+
+  const endpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ sql, params })
+  });
+
+  const data = (await res.json()) as any;
+  if (!res.ok || !data.success) {
+    const errMsg =
+      data.errors?.[0]?.message || data.messages?.[0]?.message || `HTTP ${res.status}`;
+    throw new Error(`Cloudflare D1 Error: ${errMsg}`);
+  }
+
+  const firstResult = data.result?.[0];
+  return firstResult?.results || [];
+}
+
+async function ensureD1Table(): Promise<void> {
+  const createTableSql = `
+    CREATE TABLE IF NOT EXISTS cvss_reviews (
+      id TEXT PRIMARY KEY,
+      case_id TEXT NOT NULL,
+      reviewer_name TEXT NOT NULL,
+      reviewer_role TEXT,
+      version TEXT NOT NULL DEFAULT 'v2',
+      av TEXT NOT NULL,
+      ac TEXT NOT NULL,
+      pr TEXT NOT NULL,
+      ui TEXT NOT NULL,
+      s TEXT NOT NULL,
+      c TEXT NOT NULL,
+      i TEXT NOT NULL,
+      a TEXT NOT NULL,
+      base_score REAL NOT NULL,
+      severity TEXT NOT NULL,
+      vector_string TEXT NOT NULL,
+      justification TEXT,
+      submitted_at TEXT NOT NULL
+    );
+  `;
+  await queryD1(createTableSql);
+
+  try {
+    await queryD1("CREATE INDEX IF NOT EXISTS idx_cvss_reviews_case ON cvss_reviews(case_id);");
+    await queryD1("CREATE INDEX IF NOT EXISTS idx_cvss_reviews_reviewer ON cvss_reviews(reviewer_name);");
+    await queryD1("CREATE INDEX IF NOT EXISTS idx_cvss_reviews_version ON cvss_reviews(version);");
+  } catch {
+    // Indexes might already exist
+  }
+}
+
+async function fetchAllV2Submissions(): Promise<{ data: any[]; provider: string }> {
+  // 1. Try Cloudflare D1
+  if (isD1Configured()) {
+    try {
+      await ensureD1Table();
+      const sql = `
+        SELECT * FROM cvss_reviews
+        WHERE version = 'v2' OR id LIKE 'v2_%'
+        ORDER BY submitted_at ASC;
+      `;
+      const rows = await queryD1(sql);
+      return { data: rows, provider: "Cloudflare D1" };
+    } catch (e: any) {
+      console.warn("Failed to fetch from D1, attempting fallback:", e);
+    }
+  }
+
+  // 2. Fallback to Supabase
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    const { data, error } = await supabase
+      .from("cvss_reviews")
+      .select("*")
+      .in("case_id", ["CASE-01", "CASE-02", "CASE-03", "CASE-04"])
+      .or("version.eq.v2,id.like.v2_%")
+      .order("submitted_at", { ascending: true });
+
+    if (error) throw error;
+    return { data: data || [], provider: "Supabase" };
+  }
+
+  return { data: [], provider: "None" };
+}
+
+async function deleteSubmissionsFromDb(filter: { id?: string; reviewerName?: string }): Promise<void> {
+  if (isD1Configured()) {
+    try {
+      if (filter.id) {
+        await queryD1("DELETE FROM cvss_reviews WHERE id = ?;", [filter.id]);
+      } else if (filter.reviewerName) {
+        await queryD1(
+          "DELETE FROM cvss_reviews WHERE LOWER(reviewer_name) = LOWER(?) AND (version = 'v2' OR id LIKE 'v2_%');",
+          [filter.reviewerName.trim()]
+        );
+      }
+    } catch (e) {
+      console.warn("Failed delete from D1:", e);
+    }
+  }
+
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      if (filter.id) {
+        await supabase.from("cvss_reviews").delete().eq("id", filter.id);
+      } else if (filter.reviewerName) {
+        await supabase
+          .from("cvss_reviews")
+          .delete()
+          .ilike("reviewer_name", filter.reviewerName.trim())
+          .or("version.eq.v2,id.like.v2_%");
+      }
+    } catch (e) {
+      console.warn("Failed delete from Supabase:", e);
+    }
+  }
+}
 
 // In-memory brute-force protection
 const failedAttempts = new Map<string, { count: number; firstAttempt: number; lockedUntil?: number }>();
@@ -100,7 +255,7 @@ function verifySessionToken(token: string | undefined): boolean {
 export default async function handler(req: any, res: any) {
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS,POST,DELETE");
+  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS,PATCH,DELETE,POST,PUT");
   res.setHeader(
     "Access-Control-Allow-Headers",
     "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization"
@@ -114,7 +269,7 @@ export default async function handler(req: any, res: any) {
   const clientIp = getClientIp(req);
   const action = req.query?.action || (new URL(req.url, "http://localhost").searchParams.get("action"));
 
-  // 1. ACTION: LOGIN
+  // 1. ACTION: LOGIN (Public route protected by password)
   if (action === "login") {
     if (req.method !== "POST") {
       return res.status(405).json({ success: false, error: "Method Not Allowed" });
@@ -189,30 +344,35 @@ export default async function handler(req: any, res: any) {
 
   // 3. ACTION: STATUS
   if (action === "status") {
+    const d1Ok = isD1Configured();
+    const supaOk = isSupabaseConfigured();
     return res.status(200).json({
       success: true,
-      d1Configured: isD1Configured(),
-      supabaseConfigured: isSupabaseConfigured(),
-      activeProvider: isD1Configured() ? "Cloudflare D1" : isSupabaseConfigured() ? "Supabase" : "Penyimpanan Lokal"
+      d1Configured: d1Ok,
+      supabaseConfigured: supaOk,
+      activeProvider: d1Ok ? "Cloudflare D1" : supaOk ? "Supabase" : "Penyimpanan Lokal"
     });
   }
 
   // 4. ACTION: SUBMISSIONS
   if (action === "submissions") {
     try {
-      const result = await fetchAllV2Submissions();
-      return res.status(200).json({
-        success: true,
-        data: result.data,
-        provider: result.provider
-      });
+      const { data, provider } = await fetchAllV2Submissions();
+      return res.status(200).json({ success: true, data, provider });
     } catch (e: any) {
-      return res.status(500).json({ success: false, error: e?.message || "Gagal mengambil data dari server." });
+      return res.status(500).json({
+        success: false,
+        error: e?.message || "Gagal mengambil data dari database server."
+      });
     }
   }
 
   // 5. ACTION: DELETE
   if (action === "delete") {
+    if (req.method !== "POST") {
+      return res.status(405).json({ success: false, error: "Method Not Allowed" });
+    }
+
     let body = req.body;
     if (typeof body === "string") {
       try {
@@ -222,9 +382,12 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    const { id, reviewerName } = body || {};
-
+    const { id, reviewerName } = body;
     try {
+      if (!id && !reviewerName) {
+        return res.status(400).json({ success: false, error: "Parameter id atau reviewerName diperlukan." });
+      }
+
       await deleteSubmissionsFromDb({ id, reviewerName });
       return res.status(200).json({ success: true, message: "Data berhasil dihapus dari server." });
     } catch (e: any) {
@@ -237,7 +400,7 @@ export default async function handler(req: any, res: any) {
     if (!isD1Configured()) {
       return res.status(400).json({
         success: false,
-        error: "Cloudflare D1 belum terkonfigurasi. Setel kredensial D1 terlebih dahulu."
+        error: "Cloudflare D1 belum terkonfigurasi. Tidak dapat melakukan migrasi."
       });
     }
 
@@ -245,16 +408,24 @@ export default async function handler(req: any, res: any) {
     if (!supabase) {
       return res.status(400).json({
         success: false,
-        error: "Supabase belum terkonfigurasi untuk migrasi."
+        error: "Supabase belum terkonfigurasi atau kredensial Supabase tidak ditemukan."
       });
     }
 
     try {
+      await ensureD1Table();
+
       const { data: supaRows, error: supaErr } = await supabase
         .from("cvss_reviews")
         .select("*");
 
-      if (supaErr) throw supaErr;
+      if (supaErr) {
+        return res.status(500).json({
+          success: false,
+          error: `Gagal membaca dari Supabase: ${supaErr.message}`
+        });
+      }
+
       if (!supaRows || supaRows.length === 0) {
         return res.status(200).json({
           success: true,
@@ -263,42 +434,48 @@ export default async function handler(req: any, res: any) {
         });
       }
 
-      let migratedCount = 0;
+      let count = 0;
       for (const row of supaRows) {
-        await upsertSubmission({
-          id: row.id,
-          caseId: row.case_id,
-          reviewerName: row.reviewer_name,
-          reviewerRole: row.reviewer_role,
-          version: row.version || "v2",
-          metrics: {
-            AV: row.av,
-            AC: row.ac,
-            PR: row.pr,
-            UI: row.ui,
-            S: row.s,
-            C: row.c,
-            I: row.i,
-            A: row.a
-          },
-          baseScore: row.base_score,
-          severity: row.severity,
-          vectorString: row.vector_string,
-          justification: row.justification,
-          submittedAt: row.submitted_at
-        });
-        migratedCount++;
+        const sql = `
+          INSERT OR REPLACE INTO cvss_reviews (
+            id, case_id, reviewer_name, reviewer_role, version,
+            av, ac, pr, ui, s, c, i, a,
+            base_score, severity, vector_string, justification, submitted_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        `;
+        const params = [
+          row.id || `v2_${row.case_id}_${encodeURIComponent((row.reviewer_name || "").trim().toLowerCase())}`,
+          row.case_id,
+          (row.reviewer_name || "").trim(),
+          (row.reviewer_role || "").trim(),
+          row.version || "v2",
+          row.av || "N",
+          row.ac || "L",
+          row.pr || "N",
+          row.ui || "N",
+          row.s || "U",
+          row.c || "N",
+          row.i || "N",
+          row.a || "N",
+          Number(row.base_score || 0),
+          row.severity || "NONE",
+          row.vector_string || "",
+          row.justification || "",
+          row.submitted_at || new Date().toISOString()
+        ];
+        await queryD1(sql, params);
+        count++;
       }
 
       return res.status(200).json({
         success: true,
-        count: migratedCount,
-        message: `Berhasil memigrasikan ${migratedCount} penilaian dari Supabase ke Cloudflare D1.`
+        count,
+        message: `Berhasil menyalin ${count} data evaluasi dari Supabase ke Cloudflare D1.`
       });
-    } catch (e: any) {
+    } catch (err: any) {
       return res.status(500).json({
         success: false,
-        error: `Gagal migrasi: ${e?.message || "Terjadi kesalahan saat memindahkan data"}`
+        error: err?.message || "Gagal melakukan migrasi data."
       });
     }
   }

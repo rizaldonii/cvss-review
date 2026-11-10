@@ -52,7 +52,14 @@ export async function loginAdminWithPassword(
       body: JSON.stringify({ password })
     });
 
-    const data = await res.json();
+    const text = await res.text();
+    let data: any = {};
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { success: false, error: text || `HTTP ${res.status}` };
+    }
+
     if (!res.ok || !data.success) {
       return { success: false, error: data.error || "Password admin tidak sesuai." };
     }
@@ -115,12 +122,17 @@ export async function getAdminDatabaseStatus(): Promise<{
       headers: { Authorization: `Bearer ${token}` }
     });
     if (res.ok) {
-      const data = await res.json();
-      return {
-        d1Configured: Boolean(data.d1Configured),
-        supabaseConfigured: Boolean(data.supabaseConfigured),
-        activeProvider: data.activeProvider || "Penyimpanan Lokal"
-      };
+      const text = await res.text();
+      try {
+        const data = JSON.parse(text);
+        return {
+          d1Configured: Boolean(data.d1Configured),
+          supabaseConfigured: Boolean(data.supabaseConfigured),
+          activeProvider: data.activeProvider || "Penyimpanan Lokal"
+        };
+      } catch {
+        // fallback
+      }
     }
   } catch {
     // fallback
@@ -143,7 +155,13 @@ export async function migrateSupabaseToD1(): Promise<{
     const res = await fetch("/api/admin?action=migrate-from-supabase", {
       headers: { Authorization: `Bearer ${token}` }
     });
-    const data = await res.json();
+    const text = await res.text();
+    let data: any = {};
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { success: false, error: text || `HTTP ${res.status}` };
+    }
     return {
       success: Boolean(data.success),
       count: data.count,
@@ -168,7 +186,14 @@ export async function getAdminSubmissions(): Promise<{
       });
 
       if (res.ok) {
-        const body = await res.json();
+        const text = await res.text();
+        let body: any = {};
+        try {
+          body = JSON.parse(text);
+        } catch {
+          body = {};
+        }
+
         if (body.success && Array.isArray(body.data)) {
           const mapped: CaseEvaluationSubmission[] = body.data.map((row: any) => ({
             id: row.id,
@@ -340,7 +365,14 @@ export async function saveSubmission(
       body: JSON.stringify({ sub: enrichedSub })
     });
 
-    const data = await res.json();
+    const text = await res.text();
+    let data: any = {};
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { success: false, error: text || `HTTP ${res.status}` };
+    }
+
     if (res.ok && data.success) {
       return {
         success: true,
@@ -372,9 +404,14 @@ export async function checkReviewerCloudStatus(reviewerName: string): Promise<st
       `/api/submissions?reviewerName=${encodeURIComponent(reviewerName.trim())}`
     );
     if (res.ok) {
-      const data = await res.json();
-      if (data.success && Array.isArray(data.caseIds)) {
-        return data.caseIds;
+      const text = await res.text();
+      try {
+        const data = JSON.parse(text);
+        if (data.success && Array.isArray(data.caseIds)) {
+          return data.caseIds;
+        }
+      } catch {
+        // fallback
       }
     }
   } catch {
