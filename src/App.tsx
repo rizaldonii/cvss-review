@@ -101,10 +101,10 @@ export const App: React.FC = () => {
               setIsFinished(false);
               setCurrentCaseIndex(0);
             }}
-            onOpenAdmin={() => setIsAdminOpen(true)}
           />
         ) : (
           <ReviewWorkspace
+            key={`${currentCaseIndex}_${reviewer.name}`}
             reviewer={reviewer}
             cases={SANITIZED_TEST_CASES}
             currentCaseIndex={currentCaseIndex}

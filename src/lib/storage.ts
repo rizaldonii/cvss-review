@@ -2,13 +2,26 @@ import { createClient } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CaseEvaluationSubmission, ReviewerProfile, SupabaseConfig } from "../types";
 
+export const CURRENT_CASE_VERSION = "v2";
+export const VALID_CASE_IDS = ["CASE-01", "CASE-02", "CASE-03", "CASE-04"];
+
 const STORAGE_KEYS = {
   REVIEWER: "cvss_review_active_reviewer",
+  SESSION_ID: "cvss_review_browser_session_id",
   SUBMISSIONS: "cvss_review_submissions",
   SUPABASE_CONFIG: "cvss_review_supabase_config"
 };
 
 let supabaseInstance: SupabaseClient | null = null;
+
+export function getReviewerSessionId(): string {
+  let sid = localStorage.getItem(STORAGE_KEYS.SESSION_ID);
+  if (!sid) {
+    sid = "sess_" + Math.random().toString(36).substring(2, 10) + "_" + Date.now();
+    localStorage.setItem(STORAGE_KEYS.SESSION_ID, sid);
+  }
+  return sid;
+}
 
 export function getSupabaseConfig(): SupabaseConfig {
   const envUrl = import.meta.env.VITE_SUPABASE_URL || "";
@@ -32,7 +45,7 @@ export function getSupabaseConfig(): SupabaseConfig {
 
 export function saveSupabaseConfig(config: SupabaseConfig): void {
   localStorage.setItem(STORAGE_KEYS.SUPABASE_CONFIG, JSON.stringify(config));
-  supabaseInstance = null; // reset client to reinitialize
+  supabaseInstance = null; // reset client
 }
 
 export function getSupabaseClient(): SupabaseClient | null {
@@ -50,6 +63,55 @@ export function getSupabaseClient(): SupabaseClient | null {
   }
 
   return null;
+}
+
+// ==================== Admin Auth via Supabase ====================
+
+export async function loginAdmin(
+  email: string,
+  pass: string
+): Promise<{ success: boolean; error?: string }> {
+  const client = getSupabaseClient();
+  if (!client) {
+    return {
+      success: false,
+      error: "Layanan database Supabase belum terkonfigurasi. Pastikan VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY telah diatur."
+    };
+  }
+
+  try {
+    const { error } = await client.auth.signInWithPassword({
+      email: email.trim(),
+      password: pass
+    });
+
+    if (error) {
+      return { success: false, error: "Email atau kata sandi admin tidak sesuai." };
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Terjadi kesalahan saat verifikasi admin." };
+  }
+}
+
+export async function checkAdminSession(): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client) return false;
+
+  try {
+    const { data } = await client.auth.getSession();
+    return Boolean(data.session);
+  } catch {
+    return false;
+  }
+}
+
+export async function logoutAdmin(): Promise<void> {
+  const client = getSupabaseClient();
+  if (client) {
+    await client.auth.signOut();
+  }
 }
 
 // ==================== Reviewer Profile ====================
@@ -74,7 +136,7 @@ export function clearReviewerProfile(): void {
 
 // ==================== Submissions Management ====================
 
-export function getLocalSubmissions(): CaseEvaluationSubmission[] {
+export function getRawStoredSubmissions(): CaseEvaluationSubmission[] {
   const raw = localStorage.getItem(STORAGE_KEYS.SUBMISSIONS);
   if (!raw) return [];
   try {
@@ -84,17 +146,33 @@ export function getLocalSubmissions(): CaseEvaluationSubmission[] {
   }
 }
 
+export function getLocalSubmissions(): CaseEvaluationSubmission[] {
+  const all = getRawStoredSubmissions();
+  // Filter only for current v2 4-case format
+  return all.filter(
+    s => VALID_CASE_IDS.includes(s.caseId) && (s.version === CURRENT_CASE_VERSION || !s.version)
+  );
+}
+
 export function saveLocalSubmission(sub: CaseEvaluationSubmission): void {
-  const all = getLocalSubmissions();
-  // Upsert by caseId + reviewerName
+  const all = getRawStoredSubmissions();
   const index = all.findIndex(
-    item => item.caseId === sub.caseId && item.reviewerName.trim().toLowerCase() === sub.reviewerName.trim().toLowerCase()
+    item =>
+      item.caseId === sub.caseId &&
+      item.reviewerName.trim().toLowerCase() === sub.reviewerName.trim().toLowerCase() &&
+      (item.version === CURRENT_CASE_VERSION || !item.version)
   );
 
+  const enrichedSub: CaseEvaluationSubmission = {
+    ...sub,
+    version: CURRENT_CASE_VERSION,
+    reviewerSessionId: sub.reviewerSessionId || getReviewerSessionId()
+  };
+
   if (index >= 0) {
-    all[index] = sub;
+    all[index] = enrichedSub;
   } else {
-    all.push(sub);
+    all.push(enrichedSub);
   }
 
   localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(all));
@@ -103,25 +181,61 @@ export function saveLocalSubmission(sub: CaseEvaluationSubmission): void {
 export async function saveSubmission(
   sub: CaseEvaluationSubmission
 ): Promise<{ success: boolean; cloudSynced: boolean; message: string }> {
-  // Always persist locally first to guarantee zero data loss
-  saveLocalSubmission(sub);
+  const sessionId = getReviewerSessionId();
+  const enrichedSub: CaseEvaluationSubmission = {
+    ...sub,
+    version: CURRENT_CASE_VERSION,
+    reviewerSessionId: sessionId
+  };
+
+  // 1. Simpan di perangkat lokal terlebih dahulu
+  saveLocalSubmission(enrichedSub);
 
   const client = getSupabaseClient();
   if (!client) {
     return {
-      success: false,
+      success: true,
       cloudSynced: false,
-      message: "Data tersimpan di penyimpanan lokal browser, namun belum terkirim ke database cloud peneliti (Konfigurasi Supabase belum disetel)."
+      message: "Tersimpan di perangkat ini. Belum terkirim ke server (koneksi database belum disetel)."
     };
   }
 
   try {
+    // 2. Cegah penimpaan data antar-pengguna dengan nama yang sama dari perangkat berbeda
+    const localMatches = getLocalSubmissions().filter(
+      s => s.reviewerName.trim().toLowerCase() === sub.reviewerName.trim().toLowerCase()
+    );
+
+    // Jika ini pengisian pertama dari browser ini untuk nama tersebut, pastikan nama belum dipakai orang lain di server
+    if (localMatches.length <= 1) {
+      const { data: existingRecords, error: checkError } = await client
+        .from("cvss_reviews")
+        .select("reviewer_name, case_id")
+        .ilike("reviewer_name", sub.reviewerName.trim())
+        .limit(1);
+
+      if (!checkError && existingRecords && existingRecords.length > 0) {
+        // Jika nama sudah ada di cloud tapi tidak ada riwayat lokal di browser ini
+        const isKnownLocal = localStorage.getItem("cvss_known_reviewer_" + sub.reviewerName.trim().toLowerCase());
+        if (!isKnownLocal) {
+          return {
+            success: false,
+            cloudSynced: false,
+            message: `Nama "${sub.reviewerName}" telah digunakan dari perangkat lain. Tambahkan inisial atau instansi pembeda untuk menghindari tumpang tindih data.`
+          };
+        }
+      }
+    }
+
+    // Tandai nama reviewer ini sah untuk browser ini
+    localStorage.setItem("cvss_known_reviewer_" + sub.reviewerName.trim().toLowerCase(), "true");
+
     const { error } = await client.from("cvss_reviews").upsert(
       {
-        id: sub.id,
+        id: `v2_${sub.caseId}_${encodeURIComponent(sub.reviewerName.trim().toLowerCase())}`,
         case_id: sub.caseId,
-        reviewer_name: sub.reviewerName,
-        reviewer_role: sub.reviewerRole,
+        reviewer_name: sub.reviewerName.trim(),
+        reviewer_role: sub.reviewerRole.trim(),
         av: sub.metrics.AV,
         ac: sub.metrics.AC,
         pr: sub.metrics.PR,
@@ -133,42 +247,40 @@ export async function saveSubmission(
         base_score: sub.baseScore,
         severity: sub.severity,
         vector_string: sub.vectorString,
-        justification: sub.justification,
+        justification: sub.justification.trim(),
         submitted_at: sub.submittedAt
       },
       { onConflict: "case_id,reviewer_name" }
     );
 
     if (error) {
-      console.warn("Supabase upsert warning:", error);
+      console.warn("Supabase upsert error:", error);
       return {
         success: false,
         cloudSynced: false,
-        message: `Tersimpan di browser lokal, namun GAGAL terkirim ke database cloud: ${error.message}`
+        message: `Tersimpan di perangkat ini, namun gagal terkirim ke server: ${error.message}`
       };
     }
 
     return {
       success: true,
       cloudSynced: true,
-      message: "Penilaian berhasil disimpan dan terkirim ke database Supabase!"
+      message: "Penilaian berhasil dikirim dan tersimpan di server."
     };
   } catch (err: any) {
     return {
       success: false,
       cloudSynced: false,
-      message: `Tersimpan di browser lokal, koneksi database cloud gagal: ${err?.message || "Unknown error"}`
+      message: `Tersimpan di perangkat ini, gagal terhubung ke server: ${err?.message || "Koneksi terputus"}`
     };
   }
 }
 
 export async function deleteSubmission(id: string): Promise<boolean> {
-  // 1. Delete from LocalStorage
-  const local = getLocalSubmissions();
+  const local = getRawStoredSubmissions();
   const filtered = local.filter(s => s.id !== id);
   localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(filtered));
 
-  // 2. Delete from Supabase if connected
   const client = getSupabaseClient();
   if (client) {
     try {
@@ -182,18 +294,16 @@ export async function deleteSubmission(id: string): Promise<boolean> {
 }
 
 export async function deleteReviewerAll(reviewerName: string): Promise<boolean> {
-  // 1. Delete from LocalStorage
-  const local = getLocalSubmissions();
+  const local = getRawStoredSubmissions();
   const filtered = local.filter(
     s => s.reviewerName.trim().toLowerCase() !== reviewerName.trim().toLowerCase()
   );
   localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(filtered));
 
-  // 2. Delete from Supabase if connected
   const client = getSupabaseClient();
   if (client) {
     try {
-      await client.from("cvss_reviews").delete().eq("reviewer_name", reviewerName);
+      await client.from("cvss_reviews").delete().ilike("reviewer_name", reviewerName.trim());
     } catch (e) {
       console.warn("Error deleting reviewer from Supabase:", e);
     }
@@ -212,15 +322,16 @@ export async function getAllSubmissions(): Promise<{
       const { data, error } = await client
         .from("cvss_reviews")
         .select("*")
+        .in("case_id", VALID_CASE_IDS)
         .order("submitted_at", { ascending: true });
 
       if (!error && data && data.length > 0) {
-        // Map database columns to CaseEvaluationSubmission model
         const mapped: CaseEvaluationSubmission[] = data.map((row: any) => ({
           id: row.id,
           caseId: row.case_id,
           reviewerName: row.reviewer_name,
           reviewerRole: row.reviewer_role,
+          version: CURRENT_CASE_VERSION,
           metrics: {
             AV: row.av,
             AC: row.ac,
@@ -247,13 +358,13 @@ export async function getAllSubmissions(): Promise<{
   return { data: getLocalSubmissions(), fromCloud: false };
 }
 
-// ==================== Export Helpers for Skripsi ====================
+// ==================== Export Helpers ====================
 
 export function exportToCsv(submissions: CaseEvaluationSubmission[]): string {
   const headers = [
     "Timestamp",
-    "Reviewer Name",
-    "Role/Institution",
+    "Nama Evaluator",
+    "Instansi / Keahlian",
     "Case ID",
     "AV",
     "AC",
@@ -266,13 +377,13 @@ export function exportToCsv(submissions: CaseEvaluationSubmission[]): string {
     "Base Score",
     "Severity",
     "Vector String",
-    "Justification"
+    "Alasan Penilaian"
   ];
 
   const rows = submissions.map(s => [
     `"${s.submittedAt}"`,
     `"${s.reviewerName.replace(/"/g, '""')}"`,
-    `"${s.reviewerRole.replace(/"/g, '""')}"`,
+    `"${(s.reviewerRole || "").replace(/"/g, '""')}"`,
     `"${s.caseId}"`,
     `"${s.metrics.AV}"`,
     `"${s.metrics.AC}"`,
@@ -292,20 +403,17 @@ export function exportToCsv(submissions: CaseEvaluationSubmission[]): string {
 }
 
 export function exportToLatex(submissions: CaseEvaluationSubmission[]): string {
-  // Group by Case ID for 4 vulnerability groups
-  const caseIds = ["CASE-01", "CASE-02", "CASE-03", "CASE-04"];
-  
   let latex = `\\begin{table}[htbp]
 \\centering
-\\caption{Rekapitulasi Penilaian CVSS v3.1 oleh Tiga Evaluator (4 Kelompok Kerentanan)}
-\\label{tab:rekap-cvss-expert}
+\\caption{Rekapitulasi Penilaian CVSS v3.1 oleh Evaluator (Empat Kelompok Kerentanan)}
+\\label{tab:rekap-cvss-evaluator}
 \\resizebox{\\textwidth}{!}{%
 \\begin{tabular}{|c|l|l|c|c|l|}
 \\hline
-\\textbf{Case ID} & \\textbf{Penilai} & \\textbf{Vector String CVSS v3.1} & \\textbf{Skor} & \\textbf{Tingkat Keparahan} \\\\ \\hline
+\\textbf{Case ID} & \\textbf{Penilai} & \\textbf{Vector String CVSS v3.1} & \\textbf{Skor} & \\textbf{Keparahan} \\\\ \\hline
 `;
 
-  caseIds.forEach(cId => {
+  VALID_CASE_IDS.forEach(cId => {
     const caseSubs = submissions.filter(s => s.caseId === cId);
     if (caseSubs.length === 0) {
       latex += `${cId} & - & Belum dinilai & - & - \\\\ \\hline\n`;

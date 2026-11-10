@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import type {
   TestCaseDossier,
   ReviewerProfile,
@@ -54,33 +54,25 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
 }) => {
   const currentCase = cases[currentCaseIndex];
 
-  const [metrics, setMetrics] = useState<CVSSv31Metrics>(EMPTY_METRICS);
-  const [justification, setJustification] = useState("");
+  const existingSubmission = getLocalSubmissions().find(
+    s =>
+      s.caseId === currentCase.caseId &&
+      s.reviewerName.trim().toLowerCase() === reviewer.name.trim().toLowerCase()
+  );
+
+  const [metrics, setMetrics] = useState<CVSSv31Metrics>(
+    existingSubmission ? existingSubmission.metrics : EMPTY_METRICS
+  );
+  const [justification, setJustification] = useState(
+    existingSubmission?.justification || ""
+  );
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saveStatus, setSaveStatus] = useState<{
-    type: "success" | "warning" | "error";
+    type: "success" | "warning";
     message: string;
     canProceedAnyway?: boolean;
   } | null>(null);
-
-  // Load existing submission if reviewer already rated this case
-  useEffect(() => {
-    const existing = getLocalSubmissions().find(
-      s =>
-        s.caseId === currentCase.caseId &&
-        s.reviewerName.trim().toLowerCase() === reviewer.name.trim().toLowerCase()
-    );
-
-    if (existing) {
-      setMetrics(existing.metrics);
-      setJustification(existing.justification || "");
-    } else {
-      setMetrics(EMPTY_METRICS);
-      setJustification("");
-    }
-    setSaveStatus(null);
-  }, [currentCase.caseId, reviewer.name]);
 
   const calculationResult = calculateCVSSv31(metrics);
   const isJustificationFilled = justification.trim().length > 0;
@@ -103,7 +95,7 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
 
     setIsSubmitting(true);
     const submission: CaseEvaluationSubmission = {
-      id: `${currentCase.caseId}_${reviewer.name.replace(/\s+/g, "_")}_${Date.now()}`,
+      id: `v2_${currentCase.caseId}_${encodeURIComponent(reviewer.name.trim().toLowerCase())}`,
       caseId: currentCase.caseId,
       reviewerName: reviewer.name,
       reviewerRole: reviewer.roleOrAffiliation,
@@ -132,19 +124,17 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
     if (res.cloudSynced) {
       setSaveStatus({
         type: "success",
-        message: "Penilaian berhasil disimpan dan terkirim ke database cloud peneliti!"
+        message: "Penilaian berhasil dikirim dan tersimpan di server."
       });
 
-      // Auto advance to next case or finish view
       setTimeout(() => {
         if (currentCaseIndex < cases.length - 1) {
           onCaseChange(currentCaseIndex + 1);
         } else {
           onFinishAllCases();
         }
-      }, 1200);
+      }, 1000);
     } else {
-      // Failed cloud sync: alert user explicitly
       setSaveStatus({
         type: "warning",
         message: res.message,
@@ -164,7 +154,7 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
   return (
     <div className="workspace-container">
       <div className="workspace-split-layout">
-        {/* Left Pane: Technical Dossier and Sanitized Evidence */}
+        {/* Left Pane: Technical Dossier and Evidence */}
         <section className="workspace-left-pane">
           <CaseViewer
             testCase={currentCase}
@@ -176,7 +166,7 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
         {/* Right Pane: Interactive CVSS Calculator and Justification */}
         <section className="workspace-right-pane">
           <div className="sticky-scoring-column">
-            {/* Guide Trigger Button */}
+            {/* Guide Shortcut */}
             <div className="guide-shortcut-bar">
               <button
                 type="button"
@@ -184,19 +174,19 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
                 onClick={onOpenGuide}
                 title="Buka panduan standar penilaian CVSS v3.1"
               >
-                <BookOpen size={15} />
-                <span>Buka Panduan Penilaian CVSS v3.1</span>
+                <BookOpen size={14} />
+                <span>Panduan CVSS v3.1</span>
               </button>
             </div>
 
-            {/* Cloud Sync Status Banner */}
+            {/* Storage Status Notification */}
             {saveStatus && (
               <div className={`status-toast-banner status-${saveStatus.type}`}>
                 <div className="status-toast-content">
                   {saveStatus.type === "success" ? (
-                    <CheckCircle2 size={18} className="text-emerald shrink-0" />
+                    <CheckCircle2 size={16} className="text-emerald shrink-0" />
                   ) : (
-                    <AlertTriangle size={18} className="text-warning shrink-0" />
+                    <AlertTriangle size={16} className="text-amber shrink-0" />
                   )}
                   <span className="status-toast-text">{saveStatus.message}</span>
                 </div>
@@ -209,14 +199,14 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
                       disabled={isSubmitting}
                     >
                       <RefreshCw size={13} className={isSubmitting ? "animate-spin" : ""} />
-                      <span>Coba Kirim Ulang ke Cloud</span>
+                      <span>Kirim ulang ke server</span>
                     </button>
                     <button
                       type="button"
                       className="btn-proceed-anyway"
                       onClick={handleProceedManually}
                     >
-                      <span>Tetap Lanjut (Hanya Lokal)</span>
+                      <span>Tetap lanjut (simpan lokal)</span>
                     </button>
                   </div>
                 )}
@@ -226,43 +216,40 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
             {/* Score & Vector Display */}
             <ScoreGauge result={calculationResult} />
 
-            {/* 8 Base Metrics Segmented Selectors with Hover Tooltips */}
+            {/* 8 Base Metrics Segmented Selectors with Inline Explanation */}
             <CvssSelector metrics={metrics} onChange={handleMetricChange} />
 
-            {/* Qualitative Justification Textarea (Mandatory) */}
+            {/* Justification Textarea (Mandatory) */}
             <div className="justification-container">
               <div className="justification-label-row">
                 <label htmlFor="expert-justification" className="justification-label">
-                  Justifikasi Teknis &amp; Catatan Evaluasi <span className="required-star">*</span>
+                  Alasan penilaian <span className="required-star">*</span>
                 </label>
-                <span className="justification-badge-required">Wajib Diisi</span>
+                <span className="justification-badge-required">Wajib diisi</span>
               </div>
               <textarea
                 id="expert-justification"
                 className={`justification-textarea ${!isJustificationFilled && calculationResult.isComplete ? "required-highlight" : ""}`}
                 rows={4}
-                placeholder="Wajib diisi: Berikan argumentasi teknis penentuan metrik di atas berdasarkan analisis bukti POC (misal: pertimbangan vektor serangan, prasyarat akses, Scope Unchanged vs Changed, serta estimasi dampak kerahasiaan/integritas)..."
+                placeholder="Jelaskan alasan penentuan nilai metrik di atas berdasarkan bukti pengujian (misal pertimbangan vektor serangan, prasyarat akses, atau cakupan dampak terhadap data)..."
                 value={justification}
                 onChange={e => setJustification(e.target.value)}
               />
-              <span className="justification-hint">
-                Jelaskan dasar rasionalisasi pemilihan nilai metrik di atas untuk mempermudah perbandingan antar-evaluator.
-              </span>
             </div>
 
             {/* Incomplete Warning Banner */}
             {!isReadyToSubmit && (
               <div className="incomplete-alert-banner">
-                <AlertCircle size={16} />
+                <AlertCircle size={15} />
                 <span>
                   {!calculationResult.isComplete
-                    ? "Wajib memilih seluruh 8 parameter metrik dasar sebelum menyimpan evaluasi."
-                    : "Wajib mengisi kolom Justifikasi Teknis sebelum menyimpan evaluasi."}
+                    ? "Pilih seluruh 8 parameter metrik sebelum menyimpan."
+                    : "Kolom alasan penilaian wajib diisi sebelum menyimpan."}
                 </span>
               </div>
             )}
 
-            {/* Bottom Navigation and Submission Buttons */}
+            {/* Bottom Navigation */}
             <div className="workspace-bottom-actions">
               <button
                 type="button"
@@ -271,7 +258,7 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
                 disabled={currentCaseIndex === 0}
               >
                 <ChevronLeft size={16} />
-                <span>Kasus Sebelumnya</span>
+                <span>Kembali</span>
               </button>
 
               <button
@@ -282,12 +269,12 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
               >
                 {currentCaseIndex === cases.length - 1 ? (
                   <>
-                    <Send size={16} />
-                    <span>Simpan &amp; Selesaikan Evaluasi (4/4)</span>
+                    <Send size={15} />
+                    <span>Simpan dan selesai</span>
                   </>
                 ) : (
                   <>
-                    <span>Simpan &amp; Lanjut ke Kasus {currentCaseIndex + 2}</span>
+                    <span>Simpan dan lanjut</span>
                     <ChevronRight size={16} />
                   </>
                 )}

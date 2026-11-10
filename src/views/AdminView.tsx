@@ -1,34 +1,30 @@
-import React, { useState } from "react";
-import type { CaseEvaluationSubmission, TestCaseDossier, SupabaseConfig, CVSSv31Metrics } from "../types";
+import React, { useState, useEffect } from "react";
+import type { CaseEvaluationSubmission, TestCaseDossier, CVSSv31Metrics } from "../types";
 import {
   getAllSubmissions,
   deleteSubmission,
   deleteReviewerAll,
   exportToCsv,
   exportToLatex,
-  getSupabaseConfig,
-  saveSupabaseConfig,
-  getSupabaseClient
+  loginAdmin,
+  checkAdminSession,
+  logoutAdmin
 } from "../lib/storage";
 import {
   Lock,
-  Unlock,
-  ShieldCheck,
-  AlertTriangle,
   Download,
   Copy,
   Check,
   RefreshCw,
-  Database,
   Users,
   CheckCircle2,
   FileText,
-  Sliders,
   X,
   Trash2,
   Plus,
   Eye,
-  KeyRound
+  LogOut,
+  AlertTriangle
 } from "lucide-react";
 
 interface AdminViewProps {
@@ -37,9 +33,11 @@ interface AdminViewProps {
 }
 
 export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
-  const [pin, setPin] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [isUnlocked, setIsUnlocked] = useState(false);
-  const [pinError, setPinError] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [isSubmittingAuth, setIsSubmittingAuth] = useState(false);
 
   const [submissions, setSubmissions] = useState<CaseEvaluationSubmission[]>([]);
   const [isCloud, setIsCloud] = useState(false);
@@ -47,7 +45,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
   const [copiedLatex, setCopiedLatex] = useState(false);
 
   // Active view tab
-  const [activeTab, setActiveTab] = useState<"compare" | "all" | "cloud">("compare");
+  const [activeTab, setActiveTab] = useState<"compare" | "all">("compare");
 
   // Multi-reviewer comparison selection (at least 3 evaluators)
   const [selectedReviewers, setSelectedReviewers] = useState<string[]>(["", "", ""]);
@@ -55,63 +53,70 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
   // Detailed modal for in-depth comparison of a specific case
   const [inspectCaseId, setInspectCaseId] = useState<string | null>(null);
 
-  // Supabase settings state
-  const [cloudConfig, setCloudConfig] = useState<SupabaseConfig>(() => getSupabaseConfig());
-  const [cloudTestStatus, setCloudTestStatus] = useState<string>("");
-
-  const validPin = import.meta.env.VITE_ADMIN_PIN || "skripsi2026";
-
-  const handleUnlock = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (pin.trim() === validPin || pin.trim() === "1234") {
-      setIsUnlocked(true);
-      setPinError("");
-      loadData();
-    } else {
-      setPinError("PIN salah. Silakan masukkan PIN yang benar (Default: skripsi2026).");
-    }
-  };
-
   const loadData = async () => {
     setLoading(true);
     const res = await getAllSubmissions();
     setSubmissions(res.data);
     setIsCloud(res.fromCloud);
 
-    // Populate default reviewers (prefer Rizal, Arya, Pak Taufik or first 3)
-    const uniqueReviewers = Array.from(new Set(res.data.map(s => s.reviewerName)));
+    // Populate comparison slots strictly from actual submissions
+    const unique = Array.from(new Set(res.data.map(s => s.reviewerName)));
     setSelectedReviewers(prev => {
       const updated = [...prev];
-      // Ensure at least 3 slots
       while (updated.length < 3) {
         updated.push("");
       }
-
-      // Check if we need to auto-populate empty slots
-      if (uniqueReviewers.length > 0) {
-        // Preferred order
-        const preferred = ["Rizal", "Arya", "Pak Taufik"];
-        const matchedPreferred = preferred.filter(p =>
-          uniqueReviewers.some(u => u.toLowerCase().includes(p.toLowerCase()))
-        );
-
-        for (let i = 0; i < 3; i++) {
-          if (!updated[i]) {
-            if (matchedPreferred[i]) {
-              const exact = uniqueReviewers.find(u =>
-                u.toLowerCase().includes(matchedPreferred[i].toLowerCase())
-              );
-              if (exact) updated[i] = exact;
-            } else if (uniqueReviewers[i] && !updated.includes(uniqueReviewers[i])) {
-              updated[i] = uniqueReviewers[i];
-            }
-          }
+      for (let i = 0; i < 3; i++) {
+        if (!updated[i] && unique[i] && !updated.includes(unique[i])) {
+          updated[i] = unique[i];
         }
       }
       return updated;
     });
 
     setLoading(false);
+  };
+
+  // Check existing admin session on mount
+  useEffect(() => {
+    let mounted = true;
+    checkAdminSession().then(hasSession => {
+      if (mounted && hasSession) {
+        setIsUnlocked(true);
+        loadData();
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim() || !password) {
+      setAuthError("Masukkan email dan kata sandi admin.");
+      return;
+    }
+
+    setIsSubmittingAuth(true);
+    setAuthError("");
+
+    const res = await loginAdmin(email, password);
+    setIsSubmittingAuth(false);
+
+    if (res.success) {
+      setIsUnlocked(true);
+      loadData();
+    } else {
+      setAuthError(res.error || "Gagal masuk ke dashboard admin.");
+    }
+  };
+
+  const handleLogout = async () => {
+    await logoutAdmin();
+    setIsUnlocked(false);
+    setEmail("");
+    setPassword("");
   };
 
   const handleReviewerSlotChange = (slotIndex: number, newReviewer: string) => {
@@ -136,7 +141,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `Rekap_CVSS_Skripsi_4Kasus_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute("download", `Rekap_CVSS_Skripsi_4Kasus.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -150,7 +155,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
   };
 
   const handleDeleteSubmission = async (id: string, reviewerName: string, caseId: string) => {
-    if (window.confirm(`Yakin ingin menghapus record penilaian untuk ${caseId} dari "${reviewerName}"?`)) {
+    if (window.confirm(`Hapus penilaian kasus ${caseId} dari "${reviewerName}"?`)) {
       await deleteSubmission(id);
       await loadData();
     }
@@ -160,7 +165,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
     if (!reviewerName) return;
     if (
       window.confirm(
-        `Yakin ingin MENGHAPUS SELURUH evaluasi dari penilai "${reviewerName}"? Tindakan ini akan menghapus semua responnya dari sistem.`
+        `Hapus seluruh evaluasi dari evaluator "${reviewerName}"? Tindakan ini tidak dapat dibatalkan.`
       )
     ) {
       await deleteReviewerAll(reviewerName);
@@ -169,70 +174,56 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
     }
   };
 
-  const handleSaveCloudConfig = async () => {
-    saveSupabaseConfig(cloudConfig);
-    setCloudTestStatus("Mengetes koneksi ke Supabase...");
-    const client = getSupabaseClient();
-    if (!client) {
-      setCloudTestStatus("Gagal menginisialisasi client Supabase. Periksa format URL & Anon Key.");
-      return;
-    }
-
-    try {
-      const { error } = await client.from("cvss_reviews").select("count", { count: "exact" });
-      if (error) {
-        setCloudTestStatus(`Koneksi ditolak oleh Supabase: ${error.message}`);
-      } else {
-        setCloudTestStatus("Sukses! Terhubung dengan tabel cvss_reviews di database Supabase.");
-        loadData();
-      }
-    } catch (e: any) {
-      setCloudTestStatus(`Koneksi gagal: ${e?.message || "Unknown error"}`);
-    }
-  };
-
   const uniqueReviewers = Array.from(new Set(submissions.map(s => s.reviewerName)));
   const activeReviewers = selectedReviewers.filter(Boolean);
+  const inspectedCase = cases.find(c => c.caseId === inspectCaseId);
+  const metricKeys: (keyof CVSSv31Metrics)[] = ["AV", "AC", "PR", "UI", "S", "C", "I", "A"];
 
-  // If locked, render PIN entry modal
+  // Locked: Render Admin Login Modal
   if (!isUnlocked) {
     return (
       <div className="admin-overlay" onClick={onClose}>
         <div className="admin-auth-card" onClick={e => e.stopPropagation()}>
           <div className="auth-header">
-            <div className="icon-lock-bubble">
-              <Lock size={28} className="text-accent" />
-            </div>
-            <h3 className="auth-title">Akses Khusus Peneliti (Admin)</h3>
+            <h3 className="auth-title">Akses Peneliti</h3>
             <p className="auth-desc">
-              Masukkan PIN untuk membuka dashboard komparasi penilaian tiga evaluator dan ekspor
-              data Bab 4 Skripsi.
+              Masukkan kredensial akun peneliti untuk membuka rekapitulasi penilaian dan ekspor data skripsi.
             </p>
           </div>
 
-          <form onSubmit={handleUnlock} className="auth-form">
-            {pinError && <div className="error-alert">{pinError}</div>}
+          <form onSubmit={handleLogin} className="auth-form">
+            {authError && <div className="error-alert">{authError}</div>}
+
             <div className="form-group">
-              <label className="form-label">PIN Administrator</label>
+              <label className="form-label">Email Peneliti</label>
               <input
-                type="password"
-                className="form-input text-center font-mono tracking-widest text-lg"
-                placeholder="Masukkan PIN"
-                value={pin}
-                onChange={e => setPin(e.target.value)}
+                type="email"
+                className="form-input"
+                placeholder="nama@email.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
                 autoFocus
               />
-              <span className="text-xs text-muted mt-1 block">
-                Petunjuk: Default PIN adalah <code>skripsi2026</code> (dapat diatur melalui environment variable <code>VITE_ADMIN_PIN</code>).
-              </span>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Kata Sandi</label>
+              <input
+                type="password"
+                className="form-input"
+                placeholder="Masukkan kata sandi"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+              />
             </div>
 
             <div className="auth-actions">
               <button type="button" className="btn-secondary" onClick={onClose}>
                 Batal
               </button>
-              <button type="submit" className="btn-primary">
-                <Unlock size={16} /> Buka Dashboard
+              <button type="submit" className="btn-primary" disabled={isSubmittingAuth}>
+                <Lock size={15} />
+                <span>{isSubmittingAuth ? "Memeriksa..." : "Masuk"}</span>
               </button>
             </div>
           </form>
@@ -241,26 +232,18 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
     );
   }
 
-  const inspectedCase = cases.find(c => c.caseId === inspectCaseId);
-  const metricKeys: (keyof CVSSv31Metrics)[] = ["AV", "AC", "PR", "UI", "S", "C", "I", "A"];
-
   return (
     <div className="admin-fullscreen-modal">
       <div className="admin-header-bar">
         <div className="admin-title-group">
-          <ShieldCheck size={22} className="text-accent" />
           <div>
-            <h2 className="admin-heading">Dashboard Komparasi CVSS v3.1 (Tiga Evaluator)</h2>
+            <h2 className="admin-heading">Rekapitulasi Penilaian CVSS v3.1</h2>
             <span className="admin-subheading">
-              Sumber Data:{" "}
+              Sumber data:{" "}
               {isCloud ? (
-                <span className="badge-cloud-online">
-                  <Database size={12} className="inline-icon" /> Cloud Supabase Aktif
-                </span>
+                <span className="badge-cloud-online">Server Supabase aktif</span>
               ) : (
-                <span className="badge-local-storage">
-                  <Database size={12} className="inline-icon" /> Local Storage Browser
-                </span>
+                <span className="badge-local-storage">Penyimpanan perangkat</span>
               )}
             </span>
           </div>
@@ -272,30 +255,44 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
             className={`admin-tab-btn ${activeTab === "compare" ? "active" : ""}`}
             onClick={() => setActiveTab("compare")}
           >
-            <Users size={16} /> Komparasi Evaluator ({activeReviewers.length} Terpilih)
+            <Users size={15} />
+            <span>Komparasi Evaluator</span>
           </button>
           <button
             type="button"
             className={`admin-tab-btn ${activeTab === "all" ? "active" : ""}`}
             onClick={() => setActiveTab("all")}
           >
-            <FileText size={16} /> Semua Respon ({submissions.length})
-          </button>
-          <button
-            type="button"
-            className={`admin-tab-btn ${activeTab === "cloud" ? "active" : ""}`}
-            onClick={() => setActiveTab("cloud")}
-          >
-            <Sliders size={16} /> Konfigurasi Cloud
+            <FileText size={15} />
+            <span>Semua Data ({submissions.length})</span>
           </button>
         </div>
 
         <div className="admin-header-actions">
-          <button type="button" className="icon-refresh-btn" onClick={loadData} title="Muat Ulang Data">
-            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+          <button
+            type="button"
+            className="icon-refresh-btn"
+            onClick={loadData}
+            title="Muat ulang data"
+          >
+            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
           </button>
-          <button type="button" className="btn-close-admin" onClick={onClose} title="Tutup Dashboard">
-            <X size={20} />
+          <button
+            type="button"
+            className="btn-admin-logout"
+            onClick={handleLogout}
+            title="Keluar dari akun admin"
+          >
+            <LogOut size={15} />
+            <span>Keluar</span>
+          </button>
+          <button
+            type="button"
+            className="btn-close-admin"
+            onClick={onClose}
+            title="Tutup dashboard"
+          >
+            <X size={18} />
           </button>
         </div>
       </div>
@@ -304,27 +301,27 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
         {/* Quick Stats Bar */}
         <div className="stats-row">
           <div className="stat-card">
-            <span className="stat-label">Total Penilai Terdaftar</span>
-            <span className="stat-value">{uniqueReviewers.length} Penilai</span>
+            <span className="stat-label">Total evaluator</span>
+            <span className="stat-value">{uniqueReviewers.length}</span>
           </div>
           <div className="stat-card">
-            <span className="stat-label">Total Respon Masuk</span>
-            <span className="stat-value">{submissions.length} Respon</span>
+            <span className="stat-label">Total penilaian masuk</span>
+            <span className="stat-value">{submissions.length}</span>
           </div>
           <div className="stat-card">
-            <span className="stat-label">Kasus Selesai Dinilai</span>
+            <span className="stat-label">Kasus dinilai</span>
             <span className="stat-value">
-              {cases.filter(c => submissions.some(s => s.caseId === c.caseId)).length} / {cases.length} Kasus
+              {cases.filter(c => submissions.some(s => s.caseId === c.caseId)).length} dari {cases.length}
             </span>
           </div>
 
           <div className="export-buttons-group">
             <button type="button" className="btn-export-csv" onClick={handleDownloadCsv}>
-              <Download size={14} /> Unduh CSV (Excel)
+              <Download size={14} /> Unduh CSV
             </button>
             <button type="button" className="btn-export-latex" onClick={handleCopyLatex}>
               {copiedLatex ? <Check size={14} className="text-emerald" /> : <Copy size={14} />}
-              <span>{copiedLatex ? "Tabel LaTeX Tersalin!" : "Salin Tabel LaTeX Skripsi"}</span>
+              <span>{copiedLatex ? "LaTeX tersalin" : "Salin tabel LaTeX"}</span>
             </button>
           </div>
         </div>
@@ -336,72 +333,61 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
             <div className="comparison-controls-card">
               <div className="evaluator-slots-header">
                 <span className="slots-title">
-                  <Users size={16} className="inline-icon text-accent" /> Panel Komparasi Evaluator (Pilih minimal 3 evaluator untuk dibandingkan):
+                  Pilih evaluator untuk dibandingkan:
                 </span>
                 <button
                   type="button"
                   className="btn-add-evaluator-slot"
                   onClick={handleAddReviewerSlot}
-                  title="Tambah kolom evaluator tambahan"
+                  title="Tambah kolom evaluator"
                 >
-                  <Plus size={14} /> Tambah Kolom Evaluator
+                  <Plus size={14} /> Tambah kolom
                 </button>
               </div>
 
               <div className="evaluator-slots-grid">
-                {selectedReviewers.map((revName, idx) => {
-                  const defaultLabel =
-                    idx === 0
-                      ? "Evaluator 1 (Peneliti: Rizal)"
-                      : idx === 1
-                      ? "Evaluator 2 (Arya)"
-                      : idx === 2
-                      ? "Evaluator 3 (Pak Taufik)"
-                      : `Evaluator ${idx + 1}`;
-
-                  return (
-                    <div key={idx} className="picker-item-slot">
-                      <div className="picker-header-row">
-                        <label className="picker-label">{defaultLabel}:</label>
-                        <div className="picker-slot-actions">
-                          {revName && (
-                            <button
-                              type="button"
-                              className="btn-delete-reviewer-mini"
-                              onClick={() => handleDeleteReviewer(revName)}
-                              title={`Hapus seluruh evaluasi dari ${revName}`}
-                            >
-                              <Trash2 size={12} /> Hapus Data
-                            </button>
-                          )}
-                          {selectedReviewers.length > 3 && (
-                            <button
-                              type="button"
-                              className="btn-remove-slot-mini"
-                              onClick={() => handleRemoveReviewerSlot(idx)}
-                              title="Tutup slot evaluator ini"
-                            >
-                              <X size={12} />
-                            </button>
-                          )}
-                        </div>
+                {selectedReviewers.map((revName, idx) => (
+                  <div key={idx} className="picker-item-slot">
+                    <div className="picker-header-row">
+                      <label className="picker-label">Evaluator {idx + 1}:</label>
+                      <div className="picker-slot-actions">
+                        {revName && (
+                          <button
+                            type="button"
+                            className="btn-delete-reviewer-mini"
+                            onClick={() => handleDeleteReviewer(revName)}
+                            title={`Hapus seluruh evaluasi dari ${revName}`}
+                          >
+                            <Trash2 size={12} /> Hapus
+                          </button>
+                        )}
+                        {selectedReviewers.length > 3 && (
+                          <button
+                            type="button"
+                            className="btn-remove-slot-mini"
+                            onClick={() => handleRemoveReviewerSlot(idx)}
+                            title="Tutup slot ini"
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
                       </div>
-
-                      <select
-                        className="picker-select"
-                        value={revName}
-                        onChange={e => handleReviewerSlotChange(idx, e.target.value)}
-                      >
-                        <option value="">-- Pilih Penilai {idx + 1} --</option>
-                        {uniqueReviewers.map(r => (
-                          <option key={r} value={r}>
-                            {r}
-                          </option>
-                        ))}
-                      </select>
                     </div>
-                  );
-                })}
+
+                    <select
+                      className="picker-select"
+                      value={revName}
+                      onChange={e => handleReviewerSlotChange(idx, e.target.value)}
+                    >
+                      <option value="">-- Pilih evaluator --</option>
+                      {uniqueReviewers.map(r => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -410,7 +396,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
               <table className="comparison-table">
                 <thead>
                   <tr>
-                    <th style={{ minWidth: "220px" }}>Kelompok Kerentanan</th>
+                    <th style={{ minWidth: "220px" }}>Kasus</th>
                     {activeReviewers.map(rName => (
                       <th key={rName} style={{ minWidth: "240px" }}>
                         <div className="evaluator-col-header">
@@ -421,8 +407,8 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
                         </div>
                       </th>
                     ))}
-                    <th style={{ minWidth: "160px" }}>Status Kesesuaian</th>
-                    <th style={{ minWidth: "120px" }} className="text-center">Aksi</th>
+                    <th style={{ minWidth: "150px" }}>Kesesuaian vektor</th>
+                    <th style={{ minWidth: "100px" }} className="text-center">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -448,7 +434,6 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
                         status = "CONSENSUS";
                       } else {
                         status = "DISCREPANCY";
-                        // Find which metrics differ across ANY of the evaluators
                         metricKeys.forEach(k => {
                           const val0 = reviewerSubs[0]!.metrics[k];
                           const hasDiff = reviewerSubs.some(sub => sub!.metrics[k] !== val0);
@@ -470,7 +455,6 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
                           </div>
                         </td>
 
-                        {/* Columns for each active evaluator */}
                         {activeReviewers.map((rName, rIdx) => {
                           const sub = reviewerSubs[rIdx];
                           return (
@@ -496,51 +480,49 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
                                     ))}
                                   </div>
                                   <p className="evaluator-justification-preview" title={sub.justification}>
-                                    &ldquo;{sub.justification || "Tidak ada justifikasi"}&rdquo;
+                                    &ldquo;{sub.justification || "Tidak ada alasan"}&rdquo;
                                   </p>
                                 </div>
                               ) : (
-                                <span className="text-muted italic">Belum mengisi</span>
+                                <span className="text-muted italic text-xs">Belum mengisi</span>
                               )}
                             </td>
                           );
                         })}
 
-                        {/* Status Column */}
                         <td>
                           {status === "CONSENSUS" && (
                             <span className="status-badge consensus">
-                              <CheckCircle2 size={12} /> Sesuai (Vektor Identik)
+                              <CheckCircle2 size={12} /> Vektor identik
                             </span>
                           )}
                           {status === "DISCREPANCY" && (
                             <div className="status-discrepancy-block">
                               <span className="status-badge discrepancy">
-                                <AlertTriangle size={12} /> Terdapat Perbedaan
+                                <AlertTriangle size={12} /> Vektor berbeda
                               </span>
                               {diffMetrics.length > 0 && (
                                 <span className="diff-metrics-text">
-                                  Beda metrik: <strong>{diffMetrics.join(", ")}</strong>
+                                  Beda: {diffMetrics.join(", ")}
                                 </span>
                               )}
                             </div>
                           )}
                           {status === "PENDING" && (
                             <span className="status-badge pending">
-                              Menunggu ({filledCount}/{activeReviewers.length} mengisi)
+                              Menunggu ({filledCount}/{activeReviewers.length})
                             </span>
                           )}
                         </td>
 
-                        {/* Action Column */}
                         <td className="text-center">
                           <button
                             type="button"
                             className="btn-inspect-detail"
                             onClick={() => setInspectCaseId(c.caseId)}
-                            title="Buka perbandingan metrik dan justifikasi mendalam"
+                            title="Buka detail komparasi metrik dan alasan"
                           >
-                            <Eye size={14} /> Detail
+                            <Eye size={13} /> Detail
                           </button>
                         </td>
                       </tr>
@@ -559,14 +541,14 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
               <table className="raw-data-table">
                 <thead>
                   <tr>
-                    <th>Timestamp</th>
-                    <th>Nama Penilai</th>
-                    <th>Instansi/Peran</th>
-                    <th>Case ID</th>
-                    <th>Base Score</th>
-                    <th>Severity</th>
-                    <th>Vector String</th>
-                    <th>Justifikasi Teknis</th>
+                    <th>Waktu</th>
+                    <th>Nama</th>
+                    <th>Instansi / Keahlian</th>
+                    <th>Kasus</th>
+                    <th>Skor</th>
+                    <th>Keparahan</th>
+                    <th>Vector string</th>
+                    <th>Alasan penilaian</th>
                     <th className="text-center">Aksi</th>
                   </tr>
                 </thead>
@@ -574,7 +556,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
                   {submissions.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="text-center py-8 text-muted">
-                        Belum ada respon evaluasi yang tersimpan di sistem.
+                        Belum ada data penilaian yang masuk.
                       </td>
                     </tr>
                   ) : (
@@ -611,9 +593,9 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
                             type="button"
                             className="btn-delete-record-btn"
                             onClick={() => handleDeleteSubmission(s.id, s.reviewerName, s.caseId)}
-                            title={`Hapus penilaian ${s.caseId} dari ${s.reviewerName}`}
+                            title={`Hapus penilaian ${s.caseId}`}
                           >
-                            <Trash2 size={15} />
+                            <Trash2 size={14} />
                           </button>
                         </td>
                       </tr>
@@ -621,100 +603,6 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
                   )}
                 </tbody>
               </table>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 3: CLOUD CONFIGURATION (SUPABASE) */}
-        {activeTab === "cloud" && (
-          <div className="cloud-config-tab">
-            <div className="cloud-config-card">
-              <div className="cloud-card-header">
-                <Database size={24} className="text-accent" />
-                <div>
-                  <h3 className="cloud-card-title">Koneksi Database Cloud (Supabase)</h3>
-                  <p className="cloud-card-desc">
-                    Penilaian dari tiga evaluator pada perangkat berbeda akan langsung tersimpan di
-                    tabel PostgreSQL Supabase. Anda dapat mengisi konfigurasi di bawah ini atau melalui
-                    environment variable (<code>VITE_SUPABASE_URL</code> &amp; <code>VITE_SUPABASE_ANON_KEY</code>) pada dashboard Vercel.
-                  </p>
-                </div>
-              </div>
-
-              <div className="cloud-inputs-form">
-                <div className="form-group">
-                  <label className="form-label">Supabase Project URL</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="https://xyzcompany.supabase.co"
-                    value={cloudConfig.supabaseUrl}
-                    onChange={e =>
-                      setCloudConfig(prev => ({ ...prev, supabaseUrl: e.target.value.trim() }))
-                    }
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Supabase Anon Public API Key</label>
-                  <input
-                    type="password"
-                    className="form-input"
-                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                    value={cloudConfig.supabaseAnonKey}
-                    onChange={e =>
-                      setCloudConfig(prev => ({ ...prev, supabaseAnonKey: e.target.value.trim() }))
-                    }
-                  />
-                </div>
-
-                {cloudTestStatus && (
-                  <div
-                    className={`test-result-box ${
-                      cloudTestStatus.startsWith("Sukses") ? "success" : "alert"
-                    }`}
-                  >
-                    <span>{cloudTestStatus}</span>
-                  </div>
-                )}
-
-                <div className="cloud-form-actions">
-                  <button type="button" className="btn-primary" onClick={handleSaveCloudConfig}>
-                    <Database size={16} /> Simpan &amp; Tes Koneksi Supabase
-                  </button>
-                </div>
-
-                <div className="sql-schema-guide">
-                  <h4 className="sql-guide-title">
-                    <KeyRound size={15} className="inline-icon text-accent" /> Skema SQL Tabel Supabase (4 Kasus):
-                  </h4>
-                  <pre className="sql-pre">
-                    <code>{`CREATE TABLE cvss_reviews (
-  id TEXT PRIMARY KEY,
-  case_id TEXT NOT NULL,
-  reviewer_name TEXT NOT NULL,
-  reviewer_role TEXT,
-  av CHAR(1) NOT NULL,
-  ac CHAR(1) NOT NULL,
-  pr CHAR(1) NOT NULL,
-  ui CHAR(1) NOT NULL,
-  s CHAR(1) NOT NULL,
-  c CHAR(1) NOT NULL,
-  i CHAR(1) NOT NULL,
-  a CHAR(1) NOT NULL,
-  base_score NUMERIC(3,1) NOT NULL,
-  severity TEXT NOT NULL,
-  vector_string TEXT NOT NULL,
-  justification TEXT NOT NULL,
-  submitted_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-  CONSTRAINT unique_case_reviewer UNIQUE(case_id, reviewer_name)
-);`}</code>
-                  </pre>
-                  <p className="text-xs text-muted mt-2">
-                    Catatan: Constraint <code>UNIQUE(case_id, reviewer_name)</code> memastikan penilaian setiap evaluator tersimpan secara independen tanpa menimpa evaluator lain.
-                  </p>
-                </div>
-              </div>
             </div>
           </div>
         )}
@@ -726,15 +614,12 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
           <div
             className="modal-dialog modal-dialog-lg"
             onClick={e => e.stopPropagation()}
-            style={{ maxWidth: "900px" }}
+            style={{ maxWidth: "850px" }}
           >
             <div className="modal-header">
-              <div className="modal-title-row">
-                <Users size={20} className="text-accent" />
-                <h3 className="modal-title">
-                  Detail Komparasi Penilai: {inspectedCase.caseId} ({inspectedCase.targetAppNameSanitized})
-                </h3>
-              </div>
+              <h3 className="modal-title">
+                Perbandingan {inspectedCase.caseId} &bull; {inspectedCase.targetAppNameSanitized}
+              </h3>
               <button
                 type="button"
                 className="modal-close-btn"
@@ -748,12 +633,12 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
               <div className="modal-case-summary-card">
                 <span className="summary-title">{inspectedCase.findingTitle}</span>
                 <span className="summary-subtitle">
-                  Ref Kontrol: <strong>{inspectedCase.controlId}</strong> &bull; {inspectedCase.masvsCategory}
+                  Ref: {inspectedCase.controlId} &bull; {inspectedCase.masvsCategory}
                 </span>
               </div>
 
               {/* Side-by-Side 8 Metrics Comparison Table */}
-              <h4 className="detail-section-title">Perbandingan 8 Parameter Metrik Dasar:</h4>
+              <h4 className="detail-section-title">Perbandingan nilai 8 metrik CVSS:</h4>
               <div className="table-responsive">
                 <table className="detail-metrics-table">
                   <thead>
@@ -762,7 +647,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
                       {activeReviewers.map(rName => (
                         <th key={rName}>{rName}</th>
                       ))}
-                      <th>Status Metrik</th>
+                      <th>Status</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -793,15 +678,15 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
                           ))}
                           <td>
                             {hasDiscrepancy ? (
-                              <span className="text-amber-500 font-semibold text-xs">
-                                <AlertTriangle size={12} className="inline-icon" /> Berbeda
+                              <span className="text-amber font-semibold text-xs">
+                                Berbeda
                               </span>
                             ) : nonDash.length >= 2 ? (
                               <span className="text-emerald font-semibold text-xs">
-                                <Check size={12} className="inline-icon" /> Sesuai
+                                Sesuai
                               </span>
                             ) : (
-                              <span className="text-muted text-xs">Belum Lengkap</span>
+                              <span className="text-muted text-xs">-</span>
                             )}
                           </td>
                         </tr>
@@ -812,7 +697,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
               </div>
 
               {/* Side-by-Side Evaluator Justifications */}
-              <h4 className="detail-section-title mt-4">Justifikasi Tertulis dari Setiap Evaluator:</h4>
+              <h4 className="detail-section-title mt-4">Alasan penilaian tertulis:</h4>
               <div className="justifications-side-grid">
                 {activeReviewers.map(rName => {
                   const sub = submissions.find(
@@ -824,13 +709,13 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
                         <strong className="justification-author">{rName}</strong>
                         {sub && (
                           <span className="justification-score-badge">
-                            Skor: {sub.baseScore.toFixed(1)} ({sub.severity})
+                            {sub.baseScore.toFixed(1)} ({sub.severity})
                           </span>
                         )}
                       </div>
                       <p className="justification-card-text">
                         {sub?.justification || (
-                          <span className="text-muted italic">Belum mengisi justifikasi</span>
+                          <span className="text-muted italic">Tidak ada alasan yang dicatat</span>
                         )}
                       </p>
                     </div>
@@ -845,7 +730,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
                 className="btn-primary"
                 onClick={() => setInspectCaseId(null)}
               >
-                Tutup Detail
+                Tutup
               </button>
             </div>
           </div>

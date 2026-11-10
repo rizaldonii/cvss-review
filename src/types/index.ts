@@ -101,6 +101,8 @@ export interface CaseEvaluationSubmission {
   caseId: string;
   reviewerName: string;
   reviewerRole: string;
+  reviewerSessionId?: string;
+  version?: string; // "v2" for the 4-case dataset
   metrics: {
     AV: AttackVector;
     AC: AttackComplexity;

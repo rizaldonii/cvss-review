@@ -1,20 +1,15 @@
 import React, { useState } from "react";
 import type { CVSSv31Metrics } from "../types";
 import { CVSS_METRIC_DEFINITIONS } from "../data/cvssTooltips";
-import { Info, HelpCircle } from "lucide-react";
+import { HelpCircle, X } from "lucide-react";
 
 interface CvssSelectorProps {
   metrics: CVSSv31Metrics;
   onChange: (metricKey: keyof CVSSv31Metrics, value: any) => void;
 }
 
-interface ActiveTooltip {
-  metricId: keyof CVSSv31Metrics;
-  code: string;
-}
-
 export const CvssSelector: React.FC<CvssSelectorProps> = ({ metrics, onChange }) => {
-  const [activeTooltip, setActiveTooltip] = useState<ActiveTooltip | null>(null);
+  const [expandedMetric, setExpandedMetric] = useState<keyof CVSSv31Metrics | null>(null);
 
   const groups: {
     title: string;
@@ -22,21 +17,25 @@ export const CvssSelector: React.FC<CvssSelectorProps> = ({ metrics, onChange })
     metrics: (keyof CVSSv31Metrics)[];
   }[] = [
     {
-      title: "1. Exploitability Metrics",
-      description: "Tingkat kemudahan dan karakteristik teknis eksploitasi kerentanan",
+      title: "1. Metrik Eksploitabilitas (Exploitability)",
+      description: "Karakteristik teknis dan kemudahan eksploitasi kerentanan",
       metrics: ["AV", "AC", "PR", "UI"]
     },
     {
-      title: "2. Scope Metric",
-      description: "Dampak terhadap otoritas keamanan sistem di luar komponen mobile",
+      title: "2. Metrik Cakupan (Scope)",
+      description: "Dampak terhadap otoritas keamanan di luar aplikasi mobile",
       metrics: ["S"]
     },
     {
-      title: "3. Impact Metrics",
-      description: "Tingkat konsekuensi langsung terhadap kerahasiaan, integritas, dan ketersediaan",
+      title: "3. Metrik Dampak (Impact)",
+      description: "Konsekuensi terhadap kerahasiaan, integritas, dan ketersediaan",
       metrics: ["C", "I", "A"]
     }
   ];
+
+  const toggleExplanation = (metricKey: keyof CVSSv31Metrics) => {
+    setExpandedMetric(prev => (prev === metricKey ? null : metricKey));
+  };
 
   return (
     <div className="cvss-selector-wrapper">
@@ -51,30 +50,34 @@ export const CvssSelector: React.FC<CvssSelectorProps> = ({ metrics, onChange })
             {group.metrics.map(metricKey => {
               const def = CVSS_METRIC_DEFINITIONS[metricKey];
               const currentValue = metrics[metricKey];
+              const isExpanded = expandedMetric === metricKey;
 
               return (
-                <div key={metricKey} className="metric-row">
-                  <div className="metric-label-area">
-                    <span className="metric-name">{def.name}</span>
-                    <span className="metric-help-trigger" title={def.description}>
-                      <HelpCircle size={14} />
-                    </span>
-                  </div>
-
-                  <div className="metric-buttons-grid">
-                    {def.options.map(opt => {
-                      const isSelected = currentValue === opt.code;
-                      const isTooltipOpen =
-                        activeTooltip?.metricId === metricKey && activeTooltip?.code === opt.code;
-
-                      return (
-                        <div
-                          key={opt.code}
-                          className="metric-button-container"
-                          onMouseEnter={() => setActiveTooltip({ metricId: metricKey, code: opt.code })}
-                          onMouseLeave={() => setActiveTooltip(null)}
+                <div key={metricKey} className="metric-row-container">
+                  <div className="metric-row">
+                    <div className="metric-label-area">
+                      <div className="metric-name-group">
+                        <span className="metric-name">{def.name}</span>
+                        <button
+                          type="button"
+                          className={`btn-metric-toggle-help ${isExpanded ? "active" : ""}`}
+                          onClick={() => toggleExplanation(metricKey)}
+                          title={isExpanded ? "Tutup penjelasan" : "Buka penjelasan metrik"}
+                          aria-expanded={isExpanded}
                         >
+                          <HelpCircle size={13} />
+                          <span>{isExpanded ? "Tutup" : "Penjelasan"}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="metric-buttons-grid">
+                      {def.options.map(opt => {
+                        const isSelected = currentValue === opt.code;
+
+                        return (
                           <button
+                            key={opt.code}
                             type="button"
                             className={`metric-option-btn ${isSelected ? "selected" : ""}`}
                             onClick={() => onChange(metricKey, opt.code)}
@@ -82,32 +85,51 @@ export const CvssSelector: React.FC<CvssSelectorProps> = ({ metrics, onChange })
                             <span className="opt-badge">{opt.badge}</span>
                             <span className="opt-label">{opt.label}</span>
                           </button>
-
-                          {/* Hover Tooltip displaying official FIRST + Mobile context */}
-                          {isTooltipOpen && (
-                            <div className="tooltip-portal" role="tooltip">
-                              <div className="tooltip-header">
-                                <Info size={14} className="text-accent" />
-                                <span className="tooltip-title">
-                                  {def.name}: <strong>{opt.label} ({opt.badge})</strong>
-                                </span>
-                              </div>
-                              <div className="tooltip-body">
-                                <div className="tooltip-section">
-                                  <span className="section-tag">Definisi Resmi FIRST v3.1:</span>
-                                  <p className="first-text">{opt.firstOfficialText}</p>
-                                </div>
-                                <div className="tooltip-section mobile-ctx">
-                                  <span className="section-tag">Konteks Pengujian Mobile (OWASP MASVS):</span>
-                                  <p className="mobile-text">{opt.mobileEvaluationContext}</p>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
+
+                  {/* Inline Explanation Panel - Follows normal document layout flow */}
+                  {isExpanded && (
+                    <div className="metric-inline-explanation" role="region" aria-label={`Penjelasan ${def.name}`}>
+                      <div className="explanation-header">
+                        <span className="explanation-title">{def.description}</span>
+                        <button
+                          type="button"
+                          className="explanation-close-btn"
+                          onClick={() => setExpandedMetric(null)}
+                        >
+                          <X size={14} />
+                          <span>Tutup</span>
+                        </button>
+                      </div>
+
+                      <div className="explanation-options-list">
+                        {def.options.map(opt => {
+                          const isCurrent = currentValue === opt.code;
+                          return (
+                            <div
+                              key={opt.code}
+                              className={`explanation-opt-item ${isCurrent ? "is-selected-opt" : ""}`}
+                            >
+                              <div className="opt-title-line">
+                                <span className="opt-tag">{opt.badge}</span>
+                                <strong className="opt-name">{opt.label}</strong>
+                                {isCurrent && (
+                                  <span className="opt-selected-marker">Pilihan saat ini</span>
+                                )}
+                              </div>
+                              <p className="opt-def-text">{opt.firstOfficialText}</p>
+                              <p className="opt-ctx-text">
+                                <span className="ctx-label">Konteks:</span> {opt.mobileEvaluationContext}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

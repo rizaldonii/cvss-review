@@ -1,6 +1,6 @@
 import React from "react";
 import type { CVSSCalculationResult, CVSSv31Metrics, TestCaseDossier } from "../types";
-import { ShieldCheck, CheckCircle2, X } from "lucide-react";
+import { CheckCircle2, X } from "lucide-react";
 
 interface ConfirmationModalProps {
   isOpen: boolean;
@@ -31,34 +31,30 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-dialog" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <div className="modal-title-row">
-            <ShieldCheck size={20} className="text-accent" />
-            <h3 className="modal-title">Konfirmasi Penilaian Pakar</h3>
-          </div>
-          <button type="button" className="modal-close-btn" onClick={onClose}>
+          <h3 className="modal-title">Konfirmasi penilaian</h3>
+          <button type="button" className="modal-close-btn" onClick={onClose} title="Tutup">
             <X size={18} />
           </button>
         </div>
 
         <div className="modal-body">
           <p className="modal-intro">
-            Pastikan seluruh parameter metrik dan justifikasi teknis Anda telah sesuai sebelum
-            disimpan ke basis data penelitian.
+            Periksa kembali pilihan metrik dan alasan penilaian Anda sebelum disimpan.
           </p>
 
           <div className="modal-summary-card">
             <div className="summary-row">
-              <span className="summary-label">Nama Penilai:</span>
+              <span className="summary-label">Nama:</span>
               <strong className="summary-value">{reviewerName}</strong>
             </div>
             <div className="summary-row">
-              <span className="summary-label">Kasus Uji:</span>
+              <span className="summary-label">Kasus:</span>
               <span className="summary-value">
                 {testCase.caseId} &bull; {testCase.findingTitle}
               </span>
             </div>
             <div className="summary-row">
-              <span className="summary-label">Aplikasi Target:</span>
+              <span className="summary-label">Aplikasi:</span>
               <span className="summary-value">{testCase.targetAppNameSanitized}</span>
             </div>
           </div>
@@ -69,7 +65,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
               <span className="modal-score-sev">{calculationResult.severity.toUpperCase()}</span>
             </div>
             <div className="modal-vector-display">
-              <span className="modal-vector-label">Vector String:</span>
+              <span className="modal-vector-label">Vector string:</span>
               <code className="modal-vector-code">{calculationResult.vectorString}</code>
             </div>
           </div>
@@ -110,7 +106,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
           </div>
 
           <div className="modal-justification-box">
-            <span className="justification-heading">Justifikasi Teknis &amp; Rasionalisasi Skor (Wajib):</span>
+            <span className="justification-heading">Alasan penilaian:</span>
             <p className="justification-text">{justification}</p>
           </div>
         </div>
@@ -122,7 +118,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
             onClick={onClose}
             disabled={isSubmitting}
           >
-            Periksa Kembali
+            Periksa kembali
           </button>
           <button
             type="button"
@@ -131,11 +127,11 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
             disabled={isSubmitting}
           >
             {isSubmitting ? (
-              <span>Menyimpan ke Sistem...</span>
+              <span>Menyimpan...</span>
             ) : (
               <>
                 <CheckCircle2 size={16} />
-                <span>Konfirmasi & Simpan</span>
+                <span>Konfirmasi dan simpan</span>
               </>
             )}
           </button>

@@ -1,31 +1,96 @@
-import React from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import type { ReviewerProfile, TestCaseDossier } from "../types";
-import { getLocalSubmissions, exportToCsv } from "../lib/storage";
+import { getLocalSubmissions, exportToCsv, getSupabaseClient, saveSubmission } from "../lib/storage";
 import {
-  CheckCircle2,
   RotateCcw,
-  TableProperties,
-  ShieldCheck,
-  FileSpreadsheet
+  FileSpreadsheet,
+  RefreshCw,
+  AlertTriangle,
+  CheckCircle2
 } from "lucide-react";
 
 interface ThankYouViewProps {
   reviewer: ReviewerProfile;
   cases: TestCaseDossier[];
   onReviewAgain: () => void;
-  onOpenAdmin: () => void;
 }
 
 export const ThankYouView: React.FC<ThankYouViewProps> = ({
   reviewer,
   cases,
-  onReviewAgain,
-  onOpenAdmin
+  onReviewAgain
 }) => {
   const allSubmissions = getLocalSubmissions();
   const mySubmissions = allSubmissions.filter(
     s => s.reviewerName.trim().toLowerCase() === reviewer.name.trim().toLowerCase()
   );
+
+  const [cloudSyncedCaseIds, setCloudSyncedCaseIds] = useState<string[]>([]);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<string>("");
+
+  const refreshCloudStatus = useCallback(async () => {
+    const client = getSupabaseClient();
+    if (!client) return;
+
+    try {
+      const { data } = await client
+        .from("cvss_reviews")
+        .select("case_id")
+        .ilike("reviewer_name", reviewer.name.trim());
+
+      if (data) {
+        setCloudSyncedCaseIds(data.map(d => d.case_id));
+      }
+    } catch {
+      // offline or not reachable
+    }
+  }, [reviewer.name]);
+
+  useEffect(() => {
+    let mounted = true;
+    const client = getSupabaseClient();
+    if (!client) return;
+
+    client
+      .from("cvss_reviews")
+      .select("case_id")
+      .ilike("reviewer_name", reviewer.name.trim())
+      .then(
+        ({ data }) => {
+          if (mounted && data) {
+            setCloudSyncedCaseIds(data.map(d => d.case_id));
+          }
+        },
+        () => {
+          // ignore offline / network error
+        }
+      );
+
+    return () => {
+      mounted = false;
+    };
+  }, [reviewer.name]);
+
+  const handleRetryAllSync = async () => {
+    setIsSyncing(true);
+    setSyncFeedback("");
+    let synced = 0;
+
+    for (const sub of mySubmissions) {
+      const res = await saveSubmission(sub);
+      if (res.cloudSynced) synced++;
+    }
+
+    await refreshCloudStatus();
+    setIsSyncing(false);
+
+    if (synced === mySubmissions.length) {
+      setSyncFeedback("Seluruh penilaian berhasil dikirim ke server.");
+    } else {
+      setSyncFeedback(`Berhasil mengirim ${synced} dari ${mySubmissions.length} kasus ke server.`);
+    }
+  };
 
   const handleDownloadCsv = () => {
     const csv = exportToCsv(mySubmissions);
@@ -35,48 +100,79 @@ export const ThankYouView: React.FC<ThankYouViewProps> = ({
     link.setAttribute("href", url);
     link.setAttribute(
       "download",
-      `CVSS_Evaluation_${reviewer.name.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.csv`
+      `CVSS_Penilaian_${reviewer.name.replace(/\s+/g, "_")}.csv`
     );
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
+  const hasUnsynced = mySubmissions.some(s => !cloudSyncedCaseIds.includes(s.caseId));
+
   return (
     <div className="thankyou-view-container">
       <div className="thankyou-card">
         <div className="thankyou-header">
-          <div className="icon-success-bubble">
-            <CheckCircle2 size={44} className="text-emerald" />
-          </div>
-          <h2 className="thankyou-title">Seluruh Kasus Berhasil Dievaluasi!</h2>
+          <h2 className="thankyou-title">Penilaian selesai</h2>
           <p className="thankyou-subtitle">
-            Terima kasih atas kontribusi dan penilaian objektif Anda,{" "}
-            <strong>{reviewer.name}</strong> ({reviewer.roleOrAffiliation}).
+            Terima kasih atas penilaian Anda, <strong>{reviewer.name}</strong>
+            {reviewer.roleOrAffiliation ? ` (${reviewer.roleOrAffiliation})` : ""}.
           </p>
         </div>
 
+        {/* Sync Status Notice if needed */}
+        {hasUnsynced && (
+          <div className="unsynced-notice-banner">
+            <div className="unsynced-notice-content">
+              <AlertTriangle size={16} className="text-amber shrink-0" />
+              <span>
+                Sebagian penilaian Anda saat ini tersimpan di browser perangkat ini dan belum masuk ke server database peneliti.
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn-retry-cloud"
+              onClick={handleRetryAllSync}
+              disabled={isSyncing}
+            >
+              <RefreshCw size={13} className={isSyncing ? "animate-spin" : ""} />
+              <span>Kirim ulang ke server</span>
+            </button>
+          </div>
+        )}
+
+        {syncFeedback && (
+          <div className="status-toast-banner status-success mt-2">
+            <div className="status-toast-content">
+              <CheckCircle2 size={16} className="text-emerald shrink-0" />
+              <span className="status-toast-text">{syncFeedback}</span>
+            </div>
+          </div>
+        )}
+
         <div className="submissions-summary-table-box">
           <div className="table-header-title">
-            <ShieldCheck size={18} className="text-accent" />
-            <span>Ringkasan Skor CVSS v3.1 yang Telah Anda Kirimkan</span>
+            <span>Ringkasan penilaian</span>
           </div>
 
           <div className="table-responsive">
             <table className="summary-table">
               <thead>
                 <tr>
-                  <th>Case ID</th>
-                  <th>Aplikasi Target</th>
-                  <th>Kontrol OWASP</th>
-                  <th>CVSS Base Score</th>
-                  <th>Tingkat Keparahan</th>
-                  <th>Vector String</th>
+                  <th>Kasus</th>
+                  <th>Aplikasi</th>
+                  <th>Kontrol</th>
+                  <th>Skor</th>
+                  <th>Keparahan</th>
+                  <th>Vector string</th>
+                  <th>Status pengiriman</th>
                 </tr>
               </thead>
               <tbody>
                 {cases.map(c => {
                   const sub = mySubmissions.find(s => s.caseId === c.caseId);
+                  const isSynced = cloudSyncedCaseIds.includes(c.caseId);
+
                   return (
                     <tr key={c.caseId}>
                       <td>
@@ -93,11 +189,22 @@ export const ThankYouView: React.FC<ThankYouViewProps> = ({
                       </td>
                       <td>
                         <span className={`severity-cell-badge sev-${sub?.severity?.toLowerCase() || "none"}`}>
-                          {sub ? sub.severity.toUpperCase() : "BELUM DIISI"}
+                          {sub ? sub.severity.toUpperCase() : "Belum diisi"}
                         </span>
                       </td>
                       <td>
                         <code className="vector-mini">{sub ? sub.vectorString : "-"}</code>
+                      </td>
+                      <td>
+                        {sub ? (
+                          isSynced ? (
+                            <span className="sync-status-badge synced">Terkirim ke server</span>
+                          ) : (
+                            <span className="sync-status-badge local">Tersimpan di perangkat</span>
+                          )
+                        ) : (
+                          <span className="text-muted text-xs">-</span>
+                        )}
                       </td>
                     </tr>
                   );
@@ -109,18 +216,13 @@ export const ThankYouView: React.FC<ThankYouViewProps> = ({
 
         <div className="thankyou-actions">
           <button type="button" className="btn-secondary" onClick={onReviewAgain}>
-            <RotateCcw size={16} />
-            <span>Tinjau Kembali Kasus 1</span>
+            <RotateCcw size={15} />
+            <span>Tinjau kembali kasus 1</span>
           </button>
 
           <button type="button" className="btn-primary" onClick={handleDownloadCsv}>
-            <FileSpreadsheet size={16} />
-            <span>Unduh Bukti Rekapitulasi (CSV)</span>
-          </button>
-
-          <button type="button" className="btn-admin-access" onClick={onOpenAdmin}>
-            <TableProperties size={16} />
-            <span>Buka Matriks Rekapitulasi (Admin)</span>
+            <FileSpreadsheet size={15} />
+            <span>Unduh CSV</span>
           </button>
         </div>
       </div>

@@ -1,18 +1,6 @@
 import React, { useState } from "react";
 import type { TestCaseDossier, EvidenceImage } from "../types";
-import {
-  ShieldAlert,
-  FileCode,
-  Terminal,
-  Activity,
-  Layers,
-  ExternalLink,
-  Copy,
-  Check,
-  Image as ImageIcon,
-  ZoomIn,
-  X
-} from "lucide-react";
+import { ExternalLink, Copy, Check, ZoomIn, X } from "lucide-react";
 
 interface CaseViewerProps {
   testCase: TestCaseDossier;
@@ -45,22 +33,13 @@ export const CaseViewer: React.FC<CaseViewerProps> = ({
           <span className={`target-app-badge ${testCase.targetApp === "App-A" ? "app-a" : "app-b"}`}>
             {testCase.targetAppNameSanitized}
           </span>
-          <span className="method-badge">
-            <Activity size={12} className="inline-icon" /> {testCase.testMethod}
-          </span>
-          <span className="masvs-badge">
-            <Layers size={12} className="inline-icon" /> {testCase.masvsCategory}
-          </span>
-          {testCase.isOverlappingControl && (
-            <span className="overlap-badge" title="Kontrol ini gagal pada kedua aplikasi (App-A dan App-B)">
-              Overlapping Control
-            </span>
-          )}
+          <span className="method-badge">{testCase.testMethod}</span>
+          <span className="masvs-badge">{testCase.masvsCategory}</span>
         </div>
 
         <h2 className="finding-title">{testCase.findingTitle}</h2>
         <div className="control-reference">
-          Ref: <strong>{testCase.controlId}</strong> (OWASP MASTG Mobile Security Testing Guide)
+          Referensi: <strong>{testCase.controlId}</strong> (OWASP MASTG)
         </div>
       </div>
 
@@ -86,21 +65,15 @@ export const CaseViewer: React.FC<CaseViewerProps> = ({
         </div>
       </div>
 
-      {/* Root Cause Analysis */}
+      {/* Root Cause / Problem Description */}
       <div className="section-card">
-        <div className="section-title-row">
-          <ShieldAlert size={16} className="text-warning" />
-          <h3 className="section-heading">Deskripsi &amp; Akar Masalah (Root Cause)</h3>
-        </div>
+        <h3 className="section-heading">Deskripsi masalah</h3>
         <p className="root-cause-text">{testCase.rootCause}</p>
       </div>
 
-      {/* Step-by-Step Reproduction (PoC) */}
+      {/* Step-by-Step Reproduction */}
       <div className="section-card">
-        <div className="section-title-row">
-          <Terminal size={16} className="text-accent" />
-          <h3 className="section-heading">Langkah Pembuktian Nyata (Proof of Concept)</h3>
-        </div>
+        <h3 className="section-heading">Langkah pengujian</h3>
         <div className="steps-list">
           {testCase.stepByStepReproduction.map(step => (
             <div key={step.stepNumber} className="step-item">
@@ -118,7 +91,7 @@ export const CaseViewer: React.FC<CaseViewerProps> = ({
                   </div>
                 )}
                 <div className="step-evidence">
-                  <span className="evidence-tag">Hasil Pengamatan:</span> {step.observedEvidence}
+                  <span className="evidence-tag">Hasil pengamatan:</span> {step.observedEvidence}
                 </div>
               </div>
             </div>
@@ -126,13 +99,10 @@ export const CaseViewer: React.FC<CaseViewerProps> = ({
         </div>
       </div>
 
-      {/* Screenshot / Visual Evidence Gallery */}
+      {/* Visual Screenshot Gallery */}
       {testCase.images && testCase.images.length > 0 && (
         <div className="section-card">
-          <div className="section-title-row">
-            <ImageIcon size={16} className="text-accent" />
-            <h3 className="section-heading">Bukti Visual Screenshot Pengujian</h3>
-          </div>
+          <h3 className="section-heading">Tangkapan layar pengujian</h3>
           <div className="evidence-images-grid">
             {testCase.images.map((img, iIdx) => (
               <div
@@ -147,8 +117,8 @@ export const CaseViewer: React.FC<CaseViewerProps> = ({
                 <div className="image-preview-wrapper">
                   <img src={img.url} alt={img.caption} className="evidence-img" />
                   <div className="image-zoom-overlay">
-                    <ZoomIn size={20} />
-                    <span>Perbesar Gambar</span>
+                    <ZoomIn size={16} />
+                    <span>Perbesar</span>
                   </div>
                 </div>
                 <div className="image-caption-box">
@@ -160,35 +130,29 @@ export const CaseViewer: React.FC<CaseViewerProps> = ({
         </div>
       )}
 
-      {/* Operational Impact Analysis */}
+      {/* Potential Impact Analysis */}
       <div className="section-card">
-        <div className="section-title-row">
-          <Activity size={16} className="text-danger" />
-          <h3 className="section-heading">Dampak Operasional (Operational Impact)</h3>
-        </div>
+        <h3 className="section-heading">Dampak potensial</h3>
         <div className="impact-grid">
           <div className="impact-box">
-            <span className="impact-box-label">Aktor Ancaman (Threat Actor):</span>
+            <span className="impact-box-label">Aktor ancaman</span>
             <p className="impact-box-val">{testCase.operationalImpact.threatActor}</p>
           </div>
           <div className="impact-box">
-            <span className="impact-box-label">Prasyarat Eksploitasi:</span>
+            <span className="impact-box-label">Prasyarat</span>
             <p className="impact-box-val">{testCase.operationalImpact.prerequisites}</p>
           </div>
           <div className="impact-box full-width">
-            <span className="impact-box-label">Konsekuensi Dampak terhadap Data &amp; Sistem:</span>
-            <p className="impact-box-val danger-text">{testCase.operationalImpact.consequences}</p>
+            <span className="impact-box-label">Konsekuensi dampak</span>
+            <p className="impact-box-val">{testCase.operationalImpact.consequences}</p>
           </div>
         </div>
       </div>
 
-      {/* Raw Evidence / Logcat / Decompiled Code Viewer */}
+      {/* Raw Evidence Snippets */}
       {testCase.evidenceSnippets && testCase.evidenceSnippets.length > 0 && (
         <div className="section-card">
-          <div className="section-title-row">
-            <FileCode size={16} className="text-accent" />
-            <h3 className="section-heading">Cuplikan Bukti Teks Teknis (Log / Kode)</h3>
-          </div>
+          <h3 className="section-heading">Cuplikan log dan kode</h3>
           {testCase.evidenceSnippets.map((snippet, sIdx) => (
             <div key={sIdx} className="evidence-block">
               <div className="evidence-header">
@@ -202,7 +166,7 @@ export const CaseViewer: React.FC<CaseViewerProps> = ({
                   type="button"
                   className="copy-evidence-btn"
                   onClick={() => copyCode(snippet.content, sIdx)}
-                  title="Salin cuplikan teks"
+                  title="Salin teks"
                 >
                   {copiedSnippet === sIdx ? (
                     <>
@@ -223,7 +187,7 @@ export const CaseViewer: React.FC<CaseViewerProps> = ({
         </div>
       )}
 
-      {/* Image Zoom Lightbox Modal */}
+      {/* Image Zoom Modal */}
       {activeImageZoom && (
         <div className="image-lightbox-overlay" onClick={() => setActiveImageZoom(null)}>
           <div className="image-lightbox-content" onClick={e => e.stopPropagation()}>
@@ -234,7 +198,7 @@ export const CaseViewer: React.FC<CaseViewerProps> = ({
                 className="lightbox-close-btn"
                 onClick={() => setActiveImageZoom(null)}
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
             <div className="lightbox-image-container">
