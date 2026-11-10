@@ -35,7 +35,7 @@ export const AssessmentGuideModal: React.FC<AssessmentGuideModalProps> = ({
               <Shield size={16} className="text-accent inline-icon" /> 1. Tujuan Penilaian
             </h4>
             <p className="guide-text">
-              Penilaian ini bertujuan untuk mengukur tingkat keparahan risiko dari{" "}
+              Penilaian ini bertujuan untuk mengukur <strong>tingkat keparahan kerentanan (vulnerability severity)</strong> dari{" "}
               <strong>4 kelompok kerentanan</strong> yang ditemukan pada aplikasi seluler akademik{" "}
               (App-A Aplikasi Mahasiswa dan App-B Aplikasi Orang Tua) secara objektif, konsisten,
               dan terstandarisasi menggunakan kerangka kerja{" "}
@@ -43,17 +43,17 @@ export const AssessmentGuideModal: React.FC<AssessmentGuideModalProps> = ({
             </p>
           </section>
 
-          {/* Section 2: Prinsip Berpijak pada Bukti */}
+          {/* Section 2: Prinsip Berpijak pada Bukti & Konsekuensi Wajar */}
           <section className="guide-section">
             <h4 className="guide-section-heading">
-              <CheckCircle size={16} className="text-emerald inline-icon" /> 2. Cara Menilai Berdasarkan Bukti (Evidence-Based)
+              <CheckCircle size={16} className="text-emerald inline-icon" /> 2. Prinsip Penilaian Berdasarkan Bukti (Evidence-Based)
             </h4>
             <ul className="guide-bullet-list">
               <li>
                 <strong>Pahami Fakta Teknis di Panel Kiri:</strong> Evaluasi langkah reproduksi (PoC), cuplikan keluaran teks/log, serta screenshot pengujian sebelum menentukan nilai metrik.
               </li>
               <li>
-                <strong>Nilai Berdasarkan Kondisi Riil:</strong> Pilihlah nilai yang mencerminkan fakta empiris yang terbukti, hindari membuat asumsi spekulatif yang tidak didukung bukti teknis.
+                <strong>Konsekuensi Wajar Sesuai FIRST:</strong> Penilaian tidak boleh mengarang dampak yang tidak berdasar, tetapi dapat mempertimbangkan konsekuensi eksploitasi yang wajar, didukung bukti teknis, dan sesuai dengan panduan resmi FIRST CVSS v3.1. Sesuai prinsip FIRST, tidak semua konsekuensi harus dibuktikan melalui eksploitasi aktual yang destruktif, asalkan konsekuensi tersebut merupakan dampak logis yang terbukti potensial.
               </li>
               <li>
                 <strong>Penanganan Bukti Gabungan (CASE-02 &amp; CASE-04):</strong> Pada kasus kebocoran informasi melalui logging, bukti DAST (runtime logcat) dan SAST (residu string biner) disajikan bersama sebagai bukti pendukung untuk <strong>satu penilaian CVSS terintegrasi</strong>.
@@ -64,7 +64,7 @@ export const AssessmentGuideModal: React.FC<AssessmentGuideModalProps> = ({
           {/* Section 3: 8 Metrik Dasar CVSS v3.1 */}
           <section className="guide-section">
             <h4 className="guide-section-heading">
-              <Info size={16} className="text-accent inline-icon" /> 3. Delapan Metrik Dasar CVSS v3.1
+              <Info size={16} className="text-accent inline-icon" /> 3. Delapan Metrik Dasar CVSS v3.1 (Spesifikasi FIRST)
             </h4>
             <div className="guide-metrics-grid">
               {metricKeys.map(key => {
@@ -80,7 +80,8 @@ export const AssessmentGuideModal: React.FC<AssessmentGuideModalProps> = ({
                       {def.options.map(opt => (
                         <div key={opt.code} className="guide-opt-row">
                           <span className="guide-opt-code">{opt.badge}: {opt.label}</span>
-                          <span className="guide-opt-ctx">{opt.mobileEvaluationContext}</span>
+                          <span className="guide-opt-ctx">{opt.guidanceText}</span>
+                          <span className="guide-opt-mobile-note"><em>Konteks Mobile:</em> {opt.mobileEvaluationContext}</span>
                         </div>
                       ))}
                     </div>
@@ -93,20 +94,23 @@ export const AssessmentGuideModal: React.FC<AssessmentGuideModalProps> = ({
           {/* Section 4: Cara Memberikan Justifikasi */}
           <section className="guide-section">
             <h4 className="guide-section-heading">
-              <AlertTriangle size={16} className="text-warning inline-icon" /> 4. Petunjuk Pengisian Justifikasi (Wajib Diisi)
+              <AlertTriangle size={16} className="text-amber inline-icon" /> 4. Petunjuk Pengisian Alasan Penilaian (Wajib Diisi)
             </h4>
             <p className="guide-text">
-              Setiap penilaian <strong>wajib menyertakan justifikasi teknis</strong>. Tuliskan alasan di balik penentuan nilai metrik Anda, khususnya apabila terdapat pertimbangan khusus mengenai:
+              Setiap penilaian <strong>wajib menyertakan alasan teknis (justifikasi)</strong>. Jelaskan pertimbangan rasional di balik penentuan nilai metrik Anda secara objektif:
             </p>
             <ul className="guide-bullet-list">
               <li>
-                <strong>Vektor &amp; Kompleksitas Serangan (AV &amp; AC):</strong> Apakah eksploitasi dapat dilakukan dari jarak jauh (Network) atau membutuhkan akses lokal perangkat (Local), serta ada tidaknya prasyarat khusus di luar kendali penyerang.
+                <strong>Vektor &amp; Kompleksitas Serangan (AV &amp; AC):</strong> Apakah serangan dapat dipicu dari jarak jauh (Network) atau mensyaratkan akses lokal perangkat (Local), serta ada tidaknya kondisi di luar kendali penyerang.
               </li>
               <li>
-                <strong>Ruang Lingkup (Scope):</strong> Apakah dampak eksploitasi terbatas pada sandbox aplikasi mobile itu sendiri (Unchanged) atau meluas ke otoritas keamanan lain seperti server backend atau OS (Changed).
+                <strong>Hak Akses &amp; Interaksi Pengguna (PR &amp; UI):</strong> Apakah penyerang harus terotentikasi sebelum melancarkan serangan, dan apakah dibutuhkan tindakan aktif dari korban selain penyerang.
               </li>
               <li>
-                <strong>Tingkat Dampak (C, I, A):</strong> Apakah informasi yang bocor bernilai kritis (seperti token otentikasi aktif atau PII lengkap) serta ada tidaknya dampak terhadap integritas data atau ketersediaan aplikasi.
+                <strong>Ruang Lingkup (Scope):</strong> Apakah dampak eksploitasi melanggar batas otoritas keamanan yang berbeda (Changed) atau tetap berada dalam otoritas komponen rentan (Unchanged).
+              </li>
+              <li>
+                <strong>Tingkat Dampak (C, I, A):</strong> Tingkat keparahan pengungkapan data rahasia, potensi modifikasi data tanpa hak, serta gangguan ketersediaan layanan selama atau setelah eksploitasi.
               </li>
             </ul>
           </section>
@@ -148,4 +152,3 @@ export const AssessmentGuideModal: React.FC<AssessmentGuideModalProps> = ({
     </div>
   );
 };
-

@@ -31,8 +31,9 @@ export interface MetricOptionDefinition {
   code: string;
   label: string;
   badge: string;
-  firstOfficialText: string;
+  guidanceText: string;
   mobileEvaluationContext: string;
+  firstOfficialText?: string;
 }
 
 export interface MetricDefinition {

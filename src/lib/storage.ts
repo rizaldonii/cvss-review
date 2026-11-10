@@ -9,7 +9,8 @@ const STORAGE_KEYS = {
   REVIEWER: "cvss_review_active_reviewer",
   SESSION_ID: "cvss_review_browser_session_id",
   SUBMISSIONS: "cvss_review_submissions",
-  SUPABASE_CONFIG: "cvss_review_supabase_config"
+  SUPABASE_CONFIG: "cvss_review_supabase_config",
+  ADMIN_TOKEN: "cvss_admin_token"
 };
 
 let supabaseInstance: SupabaseClient | null = null;
@@ -65,53 +66,164 @@ export function getSupabaseClient(): SupabaseClient | null {
   return null;
 }
 
-// ==================== Admin Auth via Supabase ====================
+// ==================== Serverless Admin Auth & Operations ====================
 
-export async function loginAdmin(
-  email: string,
-  pass: string
+export async function loginAdminWithPassword(
+  password: string
 ): Promise<{ success: boolean; error?: string }> {
-  const client = getSupabaseClient();
-  if (!client) {
-    return {
-      success: false,
-      error: "Layanan database Supabase belum terkonfigurasi. Pastikan VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY telah diatur."
-    };
-  }
-
   try {
-    const { error } = await client.auth.signInWithPassword({
-      email: email.trim(),
-      password: pass
+    const res = await fetch("/api/admin?action=login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password })
     });
 
-    if (error) {
-      return { success: false, error: "Email atau kata sandi admin tidak sesuai." };
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      return { success: false, error: data.error || "Password admin tidak sesuai." };
+    }
+
+    if (data.token) {
+      sessionStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, data.token);
     }
 
     return { success: true };
   } catch (err: any) {
-    return { success: false, error: err?.message || "Terjadi kesalahan saat verifikasi admin." };
+    return {
+      success: false,
+      error: err?.message || "Gagal menghubungi server verifikasi admin. Periksa koneksi internet."
+    };
   }
 }
 
-export async function checkAdminSession(): Promise<boolean> {
-  const client = getSupabaseClient();
-  if (!client) return false;
+export async function checkAdminToken(): Promise<boolean> {
+  const token = sessionStorage.getItem(STORAGE_KEYS.ADMIN_TOKEN);
+  if (!token) return false;
 
   try {
-    const { data } = await client.auth.getSession();
-    return Boolean(data.session);
+    const res = await fetch("/api/admin?action=verify", {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (!res.ok) {
+      sessionStorage.removeItem(STORAGE_KEYS.ADMIN_TOKEN);
+      return false;
+    }
+
+    const data = await res.json();
+    if (!data.valid) {
+      sessionStorage.removeItem(STORAGE_KEYS.ADMIN_TOKEN);
+      return false;
+    }
+
+    return true;
   } catch {
     return false;
   }
 }
 
 export async function logoutAdmin(): Promise<void> {
-  const client = getSupabaseClient();
-  if (client) {
-    await client.auth.signOut();
+  sessionStorage.removeItem(STORAGE_KEYS.ADMIN_TOKEN);
+}
+
+export async function getAdminSubmissions(): Promise<{
+  data: CaseEvaluationSubmission[];
+  fromCloud: boolean;
+  error?: string;
+}> {
+  const token = sessionStorage.getItem(STORAGE_KEYS.ADMIN_TOKEN);
+  if (token) {
+    try {
+      const res = await fetch("/api/admin?action=submissions", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (res.ok) {
+        const body = await res.json();
+        if (body.success && Array.isArray(body.data)) {
+          const mapped: CaseEvaluationSubmission[] = body.data.map((row: any) => ({
+            id: row.id,
+            caseId: row.case_id,
+            reviewerName: row.reviewer_name,
+            reviewerRole: row.reviewer_role,
+            version: CURRENT_CASE_VERSION,
+            metrics: {
+              AV: row.av,
+              AC: row.ac,
+              PR: row.pr,
+              UI: row.ui,
+              S: row.s,
+              C: row.c,
+              I: row.i,
+              A: row.a
+            },
+            baseScore: Number(row.base_score),
+            severity: row.severity,
+            vectorString: row.vector_string,
+            justification: row.justification || "",
+            submittedAt: row.submitted_at
+          }));
+          return { data: mapped, fromCloud: true };
+        }
+      }
+    } catch (e: any) {
+      console.warn("Could not fetch submissions from server admin API:", e);
+    }
   }
+
+  // Fallback to local submissions if API is unavailable or offline
+  return { data: getLocalSubmissions(), fromCloud: false };
+}
+
+export async function deleteAdminSubmission(id: string): Promise<boolean> {
+  // Delete from local
+  const local = getRawStoredSubmissions();
+  const filtered = local.filter(s => s.id !== id);
+  localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(filtered));
+
+  const token = sessionStorage.getItem(STORAGE_KEYS.ADMIN_TOKEN);
+  if (token) {
+    try {
+      await fetch("/api/admin?action=delete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ id })
+      });
+    } catch (e) {
+      console.warn("Error calling delete on server admin API:", e);
+    }
+  }
+
+  return true;
+}
+
+export async function deleteAdminReviewerAll(reviewerName: string): Promise<boolean> {
+  const local = getRawStoredSubmissions();
+  const filtered = local.filter(
+    s => s.reviewerName.trim().toLowerCase() !== reviewerName.trim().toLowerCase()
+  );
+  localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(filtered));
+
+  const token = sessionStorage.getItem(STORAGE_KEYS.ADMIN_TOKEN);
+  if (token) {
+    try {
+      await fetch("/api/admin?action=delete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ reviewerName })
+      });
+    } catch (e) {
+      console.warn("Error calling delete reviewer on server admin API:", e);
+    }
+  }
+
+  return true;
 }
 
 // ==================== Reviewer Profile ====================
@@ -148,9 +260,9 @@ export function getRawStoredSubmissions(): CaseEvaluationSubmission[] {
 
 export function getLocalSubmissions(): CaseEvaluationSubmission[] {
   const all = getRawStoredSubmissions();
-  // Filter only for current v2 4-case format
+  // Filter strictly for current v2 4-case format (no accepting unversioned v1 submissions)
   return all.filter(
-    s => VALID_CASE_IDS.includes(s.caseId) && (s.version === CURRENT_CASE_VERSION || !s.version)
+    s => VALID_CASE_IDS.includes(s.caseId) && s.version === CURRENT_CASE_VERSION
   );
 }
 
@@ -160,7 +272,7 @@ export function saveLocalSubmission(sub: CaseEvaluationSubmission): void {
     item =>
       item.caseId === sub.caseId &&
       item.reviewerName.trim().toLowerCase() === sub.reviewerName.trim().toLowerCase() &&
-      (item.version === CURRENT_CASE_VERSION || !item.version)
+      item.version === CURRENT_CASE_VERSION
   );
 
   const enrichedSub: CaseEvaluationSubmission = {
@@ -212,6 +324,7 @@ export async function saveSubmission(
         .from("cvss_reviews")
         .select("reviewer_name, case_id")
         .ilike("reviewer_name", sub.reviewerName.trim())
+        .or("version.eq.v2,id.like.v2_%")
         .limit(1);
 
       if (!checkError && existingRecords && existingRecords.length > 0) {
@@ -236,6 +349,7 @@ export async function saveSubmission(
         case_id: sub.caseId,
         reviewer_name: sub.reviewerName.trim(),
         reviewer_role: sub.reviewerRole.trim(),
+        version: CURRENT_CASE_VERSION,
         av: sub.metrics.AV,
         ac: sub.metrics.AC,
         pr: sub.metrics.PR,
@@ -274,88 +388,6 @@ export async function saveSubmission(
       message: `Tersimpan di perangkat ini, gagal terhubung ke server: ${err?.message || "Koneksi terputus"}`
     };
   }
-}
-
-export async function deleteSubmission(id: string): Promise<boolean> {
-  const local = getRawStoredSubmissions();
-  const filtered = local.filter(s => s.id !== id);
-  localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(filtered));
-
-  const client = getSupabaseClient();
-  if (client) {
-    try {
-      await client.from("cvss_reviews").delete().eq("id", id);
-    } catch (e) {
-      console.warn("Error deleting from Supabase:", e);
-    }
-  }
-
-  return true;
-}
-
-export async function deleteReviewerAll(reviewerName: string): Promise<boolean> {
-  const local = getRawStoredSubmissions();
-  const filtered = local.filter(
-    s => s.reviewerName.trim().toLowerCase() !== reviewerName.trim().toLowerCase()
-  );
-  localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(filtered));
-
-  const client = getSupabaseClient();
-  if (client) {
-    try {
-      await client.from("cvss_reviews").delete().ilike("reviewer_name", reviewerName.trim());
-    } catch (e) {
-      console.warn("Error deleting reviewer from Supabase:", e);
-    }
-  }
-
-  return true;
-}
-
-export async function getAllSubmissions(): Promise<{
-  data: CaseEvaluationSubmission[];
-  fromCloud: boolean;
-}> {
-  const client = getSupabaseClient();
-  if (client) {
-    try {
-      const { data, error } = await client
-        .from("cvss_reviews")
-        .select("*")
-        .in("case_id", VALID_CASE_IDS)
-        .order("submitted_at", { ascending: true });
-
-      if (!error && data && data.length > 0) {
-        const mapped: CaseEvaluationSubmission[] = data.map((row: any) => ({
-          id: row.id,
-          caseId: row.case_id,
-          reviewerName: row.reviewer_name,
-          reviewerRole: row.reviewer_role,
-          version: CURRENT_CASE_VERSION,
-          metrics: {
-            AV: row.av,
-            AC: row.ac,
-            PR: row.pr,
-            UI: row.ui,
-            S: row.s,
-            C: row.c,
-            I: row.i,
-            A: row.a
-          },
-          baseScore: Number(row.base_score),
-          severity: row.severity,
-          vectorString: row.vector_string,
-          justification: row.justification,
-          submittedAt: row.submitted_at
-        }));
-        return { data: mapped, fromCloud: true };
-      }
-    } catch (e) {
-      console.warn("Could not fetch from Supabase, falling back to local:", e);
-    }
-  }
-
-  return { data: getLocalSubmissions(), fromCloud: false };
 }
 
 // ==================== Export Helpers ====================

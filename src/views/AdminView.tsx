@@ -1,22 +1,20 @@
 import React, { useState, useEffect } from "react";
-import type { CaseEvaluationSubmission, TestCaseDossier, CVSSv31Metrics } from "../types";
+import type { CaseEvaluationSubmission, CVSSv31Metrics, TestCaseDossier } from "../types";
 import {
-  getAllSubmissions,
-  deleteSubmission,
-  deleteReviewerAll,
+  loginAdminWithPassword,
+  checkAdminToken,
+  logoutAdmin,
+  getAdminSubmissions,
+  deleteAdminSubmission,
+  deleteAdminReviewerAll,
   exportToCsv,
-  exportToLatex,
-  loginAdmin,
-  checkAdminSession,
-  logoutAdmin
+  exportToLatex
 } from "../lib/storage";
 import {
-  Lock,
+  Shield,
   Download,
   Copy,
   Check,
-  RefreshCw,
-  Users,
   CheckCircle2,
   FileText,
   X,
@@ -33,7 +31,6 @@ interface AdminViewProps {
 }
 
 export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
-  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [authError, setAuthError] = useState("");
@@ -55,7 +52,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
 
   const loadData = async () => {
     setLoading(true);
-    const res = await getAllSubmissions();
+    const res = await getAdminSubmissions();
     setSubmissions(res.data);
     setIsCloud(res.fromCloud);
 
@@ -80,7 +77,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
   // Check existing admin session on mount
   useEffect(() => {
     let mounted = true;
-    checkAdminSession().then(hasSession => {
+    checkAdminToken().then(hasSession => {
       if (mounted && hasSession) {
         setIsUnlocked(true);
         loadData();
@@ -93,15 +90,15 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !password) {
-      setAuthError("Masukkan email dan kata sandi admin.");
+    if (!password) {
+      setAuthError("Masukkan password admin.");
       return;
     }
 
     setIsSubmittingAuth(true);
     setAuthError("");
 
-    const res = await loginAdmin(email, password);
+    const res = await loginAdminWithPassword(password);
     setIsSubmittingAuth(false);
 
     if (res.success) {
@@ -115,7 +112,6 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
   const handleLogout = async () => {
     await logoutAdmin();
     setIsUnlocked(false);
-    setEmail("");
     setPassword("");
   };
 
@@ -156,7 +152,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
 
   const handleDeleteSubmission = async (id: string, reviewerName: string, caseId: string) => {
     if (window.confirm(`Hapus penilaian kasus ${caseId} dari "${reviewerName}"?`)) {
-      await deleteSubmission(id);
+      await deleteAdminSubmission(id);
       await loadData();
     }
   };
@@ -168,7 +164,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
         `Hapus seluruh evaluasi dari evaluator "${reviewerName}"? Tindakan ini tidak dapat dibatalkan.`
       )
     ) {
-      await deleteReviewerAll(reviewerName);
+      await deleteAdminReviewerAll(reviewerName);
       setSelectedReviewers(prev => prev.map(r => (r === reviewerName ? "" : r)));
       await loadData();
     }
@@ -179,7 +175,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
   const inspectedCase = cases.find(c => c.caseId === inspectCaseId);
   const metricKeys: (keyof CVSSv31Metrics)[] = ["AV", "AC", "PR", "UI", "S", "C", "I", "A"];
 
-  // Locked: Render Admin Login Modal
+  // Locked: Render Admin Login Modal (Single Password)
   if (!isUnlocked) {
     return (
       <div className="admin-overlay" onClick={onClose}>
@@ -187,7 +183,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
           <div className="auth-header">
             <h3 className="auth-title">Akses Peneliti</h3>
             <p className="auth-desc">
-              Masukkan kredensial akun peneliti untuk membuka rekapitulasi penilaian dan ekspor data skripsi.
+              Masukkan password admin untuk membuka rekapitulasi penilaian, perbandingan evaluator, dan ekspor data skripsi.
             </p>
           </div>
 
@@ -195,35 +191,27 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
             {authError && <div className="error-alert">{authError}</div>}
 
             <div className="form-group">
-              <label className="form-label">Email Peneliti</label>
+              <label className="form-label">Password Admin</label>
               <input
-                type="email"
+                type="password"
                 className="form-input"
-                placeholder="nama@email.com"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
+                placeholder="Masukkan password admin"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
                 autoFocus
               />
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Kata Sandi</label>
-              <input
-                type="password"
-                className="form-input"
-                placeholder="Masukkan kata sandi"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-              />
-            </div>
-
             <div className="auth-actions">
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={isSubmittingAuth || !password.trim()}
+              >
+                {isSubmittingAuth ? "Memverifikasi..." : "Masuk Dashboard"}
+              </button>
               <button type="button" className="btn-secondary" onClick={onClose}>
                 Batal
-              </button>
-              <button type="submit" className="btn-primary" disabled={isSubmittingAuth}>
-                <Lock size={15} />
-                <span>{isSubmittingAuth ? "Memeriksa..." : "Masuk"}</span>
               </button>
             </div>
           </form>
@@ -232,35 +220,87 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
     );
   }
 
+  // Helper comparison calculations
+  const calculateCaseComparison = (caseId: string) => {
+    const caseSubs = submissions.filter(
+      s => s.caseId === caseId && activeReviewers.includes(s.reviewerName)
+    );
+
+    const scores = caseSubs.map(s => s.baseScore);
+    const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
+
+    let minScore = scores.length > 0 ? Math.min(...scores) : null;
+    let maxScore = scores.length > 0 ? Math.max(...scores) : null;
+    let delta = minScore !== null && maxScore !== null ? maxScore - minScore : 0;
+
+    const vectorStrings = caseSubs.map(s => s.vectorString);
+    const isIdenticalVector =
+      vectorStrings.length >= 2 && vectorStrings.every(v => v === vectorStrings[0]);
+
+    return {
+      submissions: caseSubs,
+      avgScore,
+      delta,
+      isIdenticalVector,
+      isComplete: caseSubs.length === activeReviewers.length && activeReviewers.length >= 2
+    };
+  };
+
   return (
-    <div className="admin-fullscreen-modal">
-      <div className="admin-header-bar">
-        <div className="admin-title-group">
-          <div>
-            <h2 className="admin-heading">Rekapitulasi Penilaian CVSS v3.1</h2>
-            <span className="admin-subheading">
-              Sumber data:{" "}
-              {isCloud ? (
-                <span className="badge-cloud-online">Server Supabase aktif</span>
-              ) : (
-                <span className="badge-local-storage">Penyimpanan perangkat</span>
-              )}
-            </span>
+    <div className="admin-overlay" onClick={onClose}>
+      <div className="admin-fullscreen-modal" onClick={e => e.stopPropagation()}>
+        {/* Admin Header Bar */}
+        <div className="admin-header-bar">
+          <div className="admin-title-group">
+            <Shield size={22} className="text-accent" />
+            <div>
+              <h2 className="admin-heading">Rekapitulasi Penilaian CVSS v3.1 (4 Kelompok Kerentanan)</h2>
+              <span className="admin-subheading">
+                Instrumen Evaluasi Evaluator untuk Pembahasan Bab 4 Skripsi
+              </span>
+            </div>
+          </div>
+
+          <div className="admin-header-actions">
+            {isCloud ? (
+              <span className="badge-cloud-online" title="Terhubung ke Database Cloud Supabase">
+                Server Cloud
+              </span>
+            ) : (
+              <span className="badge-local-storage" title="Menggunakan data penyimpanan lokal perangkat">
+                Penyimpanan Lokal
+              </span>
+            )}
+
+            <button
+              type="button"
+              className="btn-admin-logout"
+              onClick={handleLogout}
+              title="Kunci Dashboard Admin"
+            >
+              <LogOut size={14} />
+              <span>Kunci Sesi</span>
+            </button>
+
+            <button type="button" className="btn-close-admin" onClick={onClose} title="Tutup">
+              <X size={18} />
+            </button>
           </div>
         </div>
 
+        {/* Tab Navigation */}
         <div className="admin-nav-tabs">
           <button
             type="button"
-            className={`admin-tab-btn ${activeTab === "compare" ? "active" : ""}`}
+            className={activeTab === "compare" ? "active" : ""}
             onClick={() => setActiveTab("compare")}
           >
-            <Users size={15} />
-            <span>Komparasi Evaluator</span>
+            <CheckCircle2 size={15} />
+            <span>Perbandingan Evaluator</span>
           </button>
           <button
             type="button"
-            className={`admin-tab-btn ${activeTab === "all" ? "active" : ""}`}
+            className={activeTab === "all" ? "active" : ""}
             onClick={() => setActiveTab("all")}
           >
             <FileText size={15} />
@@ -268,425 +308,185 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
           </button>
         </div>
 
-        <div className="admin-header-actions">
-          <button
-            type="button"
-            className="icon-refresh-btn"
-            onClick={loadData}
-            title="Muat ulang data"
-          >
-            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-          </button>
-          <button
-            type="button"
-            className="btn-admin-logout"
-            onClick={handleLogout}
-            title="Keluar dari akun admin"
-          >
-            <LogOut size={15} />
-            <span>Keluar</span>
-          </button>
-          <button
-            type="button"
-            className="btn-close-admin"
-            onClick={onClose}
-            title="Tutup dashboard"
-          >
-            <X size={18} />
-          </button>
-        </div>
-      </div>
-
-      <div className="admin-content-area">
-        {/* Quick Stats Bar */}
-        <div className="stats-row">
-          <div className="stat-card">
-            <span className="stat-label">Total evaluator</span>
-            <span className="stat-value">{uniqueReviewers.length}</span>
-          </div>
-          <div className="stat-card">
-            <span className="stat-label">Total penilaian masuk</span>
-            <span className="stat-value">{submissions.length}</span>
-          </div>
-          <div className="stat-card">
-            <span className="stat-label">Kasus dinilai</span>
-            <span className="stat-value">
-              {cases.filter(c => submissions.some(s => s.caseId === c.caseId)).length} dari {cases.length}
-            </span>
-          </div>
-
-          <div className="export-buttons-group">
-            <button type="button" className="btn-export-csv" onClick={handleDownloadCsv}>
-              <Download size={14} /> Unduh CSV
-            </button>
-            <button type="button" className="btn-export-latex" onClick={handleCopyLatex}>
-              {copiedLatex ? <Check size={14} className="text-emerald" /> : <Copy size={14} />}
-              <span>{copiedLatex ? "LaTeX tersalin" : "Salin tabel LaTeX"}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* TAB 1: 3+ EVALUATOR COMPARISON MATRIX */}
+        {/* Tab 1: Comparison View */}
         {activeTab === "compare" && (
-          <div className="comparison-tab-container">
-            {/* Multi-Evaluator Slot Selector Card */}
-            <div className="comparison-controls-card">
-              <div className="evaluator-slots-header">
-                <span className="slots-title">
-                  Pilih evaluator untuk dibandingkan:
-                </span>
-                <button
-                  type="button"
-                  className="btn-add-evaluator-slot"
-                  onClick={handleAddReviewerSlot}
-                  title="Tambah kolom evaluator"
-                >
-                  <Plus size={14} /> Tambah kolom
-                </button>
-              </div>
+          <div className="admin-content-area">
+            <div className="comparison-tab-container">
+              {/* Evaluator Selector Panel */}
+              <div className="comparison-controls-card">
+                <div className="evaluator-slots-header">
+                  <span className="slots-title">Pilih Evaluator yang Dikomparasikan:</span>
+                  <div className="export-buttons-group">
+                    <button type="button" className="btn-export-csv" onClick={handleDownloadCsv}>
+                      <Download size={14} />
+                      <span>Ekspor CSV</span>
+                    </button>
+                    <button type="button" className="btn-export-latex" onClick={handleCopyLatex}>
+                      {copiedLatex ? <Check size={14} className="text-teal" /> : <Copy size={14} />}
+                      <span>{copiedLatex ? "LaTeX Tersalin!" : "Salin Tabel LaTeX"}</span>
+                    </button>
+                  </div>
+                </div>
 
-              <div className="evaluator-slots-grid">
-                {selectedReviewers.map((revName, idx) => (
-                  <div key={idx} className="picker-item-slot">
-                    <div className="picker-header-row">
-                      <label className="picker-label">Evaluator {idx + 1}:</label>
-                      <div className="picker-slot-actions">
-                        {revName && (
-                          <button
-                            type="button"
-                            className="btn-delete-reviewer-mini"
-                            onClick={() => handleDeleteReviewer(revName)}
-                            title={`Hapus seluruh evaluasi dari ${revName}`}
-                          >
-                            <Trash2 size={12} /> Hapus
-                          </button>
-                        )}
-                        {selectedReviewers.length > 3 && (
+                <div className="evaluator-slots-grid">
+                  {selectedReviewers.map((revName, slotIdx) => (
+                    <div key={slotIdx} className="picker-item-slot">
+                      <div className="picker-header-row">
+                        <span className="picker-label">Evaluator {slotIdx + 1}</span>
+                        {slotIdx >= 3 && (
                           <button
                             type="button"
                             className="btn-remove-slot-mini"
-                            onClick={() => handleRemoveReviewerSlot(idx)}
-                            title="Tutup slot ini"
+                            onClick={() => handleRemoveReviewerSlot(slotIdx)}
+                            title="Hapus slot penilai"
                           >
                             <X size={12} />
                           </button>
                         )}
                       </div>
-                    </div>
-
-                    <select
-                      className="picker-select"
-                      value={revName}
-                      onChange={e => handleReviewerSlotChange(idx, e.target.value)}
-                    >
-                      <option value="">-- Pilih evaluator --</option>
-                      {uniqueReviewers.map(r => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Comparison Matrix Table */}
-            <div className="comparison-table-wrapper">
-              <table className="comparison-table">
-                <thead>
-                  <tr>
-                    <th style={{ minWidth: "220px" }}>Kasus</th>
-                    {activeReviewers.map(rName => (
-                      <th key={rName} style={{ minWidth: "240px" }}>
-                        <div className="evaluator-col-header">
-                          <span className="evaluator-col-name">{rName}</span>
-                          <span className="evaluator-col-role">
-                            {submissions.find(s => s.reviewerName === rName)?.reviewerRole || "Evaluator"}
-                          </span>
+                      <select
+                        className="picker-select"
+                        value={revName}
+                        onChange={e => handleReviewerSlotChange(slotIdx, e.target.value)}
+                      >
+                        <option value="">-- Pilih Evaluator --</option>
+                        {uniqueReviewers.map(name => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                      {revName && (
+                        <div className="picker-slot-actions">
+                          <button
+                            type="button"
+                            className="btn-delete-reviewer-mini"
+                            onClick={() => handleDeleteReviewer(revName)}
+                            title={`Hapus seluruh submission dari ${revName}`}
+                          >
+                            <Trash2 size={11} />
+                            <span>Hapus Data</span>
+                          </button>
                         </div>
-                      </th>
-                    ))}
-                    <th style={{ minWidth: "150px" }}>Kesesuaian vektor</th>
-                    <th style={{ minWidth: "100px" }} className="text-center">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cases.map(c => {
-                    const reviewerSubs = activeReviewers.map(rName =>
-                      submissions.find(s => s.caseId === c.caseId && s.reviewerName === rName)
-                    );
+                      )}
+                    </div>
+                  ))}
 
-                    const allFilled =
-                      activeReviewers.length > 0 &&
-                      reviewerSubs.every(sub => sub !== undefined && sub !== null);
-
-                    const filledCount = reviewerSubs.filter(Boolean).length;
-
-                    let status = "PENDING";
-                    let diffMetrics: string[] = [];
-
-                    if (allFilled && reviewerSubs.length >= 2) {
-                      const firstVector = reviewerSubs[0]!.vectorString;
-                      const allMatch = reviewerSubs.every(sub => sub!.vectorString === firstVector);
-
-                      if (allMatch) {
-                        status = "CONSENSUS";
-                      } else {
-                        status = "DISCREPANCY";
-                        metricKeys.forEach(k => {
-                          const val0 = reviewerSubs[0]!.metrics[k];
-                          const hasDiff = reviewerSubs.some(sub => sub!.metrics[k] !== val0);
-                          if (hasDiff) {
-                            diffMetrics.push(k);
-                          }
-                        });
-                      }
-                    }
-
-                    return (
-                      <tr key={c.caseId}>
-                        <td>
-                          <div className="table-target-col">
-                            <span className="case-id-text">{c.caseId}</span>
-                            <span className="app-name-sm">{c.targetAppNameSanitized}</span>
-                            <strong className="finding-title-sm">{c.findingTitle}</strong>
-                            <span className="control-name-sm">Ref: {c.controlId}</span>
-                          </div>
-                        </td>
-
-                        {activeReviewers.map((rName, rIdx) => {
-                          const sub = reviewerSubs[rIdx];
-                          return (
-                            <td key={rName}>
-                              {sub ? (
-                                <div className="reviewer-score-cell">
-                                  <div className="score-sev-row">
-                                    <span className="score-badge-sm">{sub.baseScore.toFixed(1)}</span>
-                                    <span className={`sev-tag-sm sev-${sub.severity.toLowerCase()}`}>
-                                      {sub.severity.toUpperCase()}
-                                    </span>
-                                  </div>
-                                  <code className="vector-snippet">{sub.vectorString}</code>
-                                  <div className="mini-chips-row">
-                                    {metricKeys.map(k => (
-                                      <span
-                                        key={k}
-                                        className={`mini-chip ${diffMetrics.includes(k) && allFilled ? "chip-diff" : ""}`}
-                                        title={`${k}: ${sub.metrics[k]}`}
-                                      >
-                                        {k}:{sub.metrics[k]}
-                                      </span>
-                                    ))}
-                                  </div>
-                                  <p className="evaluator-justification-preview" title={sub.justification}>
-                                    &ldquo;{sub.justification || "Tidak ada alasan"}&rdquo;
-                                  </p>
-                                </div>
-                              ) : (
-                                <span className="text-muted italic text-xs">Belum mengisi</span>
-                              )}
-                            </td>
-                          );
-                        })}
-
-                        <td>
-                          {status === "CONSENSUS" && (
-                            <span className="status-badge consensus">
-                              <CheckCircle2 size={12} /> Vektor identik
-                            </span>
-                          )}
-                          {status === "DISCREPANCY" && (
-                            <div className="status-discrepancy-block">
-                              <span className="status-badge discrepancy">
-                                <AlertTriangle size={12} /> Vektor berbeda
-                              </span>
-                              {diffMetrics.length > 0 && (
-                                <span className="diff-metrics-text">
-                                  Beda: {diffMetrics.join(", ")}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                          {status === "PENDING" && (
-                            <span className="status-badge pending">
-                              Menunggu ({filledCount}/{activeReviewers.length})
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="text-center">
-                          <button
-                            type="button"
-                            className="btn-inspect-detail"
-                            onClick={() => setInspectCaseId(c.caseId)}
-                            title="Buka detail komparasi metrik dan alasan"
-                          >
-                            <Eye size={13} /> Detail
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 2: RAW ALL SUBMISSIONS */}
-        {activeTab === "all" && (
-          <div className="all-submissions-tab">
-            <div className="table-responsive">
-              <table className="raw-data-table">
-                <thead>
-                  <tr>
-                    <th>Waktu</th>
-                    <th>Nama</th>
-                    <th>Instansi / Keahlian</th>
-                    <th>Kasus</th>
-                    <th>Skor</th>
-                    <th>Keparahan</th>
-                    <th>Vector string</th>
-                    <th>Alasan penilaian</th>
-                    <th className="text-center">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {submissions.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} className="text-center py-8 text-muted">
-                        Belum ada data penilaian yang masuk.
-                      </td>
-                    </tr>
-                  ) : (
-                    submissions.map(s => (
-                      <tr key={s.id}>
-                        <td className="text-xs text-muted">
-                          {new Date(s.submittedAt).toLocaleString("id-ID")}
-                        </td>
-                        <td>
-                          <strong>{s.reviewerName}</strong>
-                        </td>
-                        <td className="text-xs">{s.reviewerRole || "-"}</td>
-                        <td>
-                          <span className="case-id-text">{s.caseId}</span>
-                        </td>
-                        <td>
-                          <span className="score-cell-badge">{s.baseScore.toFixed(1)}</span>
-                        </td>
-                        <td>
-                          <span className={`sev-tag-sm sev-${s.severity.toLowerCase()}`}>
-                            {s.severity}
-                          </span>
-                        </td>
-                        <td>
-                          <code className="vector-snippet">{s.vectorString}</code>
-                        </td>
-                        <td className="justification-col">
-                          <p className="justification-excerpt" title={s.justification}>
-                            {s.justification || <span className="text-muted italic">Tidak ada catatan</span>}
-                          </p>
-                        </td>
-                        <td className="text-center">
-                          <button
-                            type="button"
-                            className="btn-delete-record-btn"
-                            onClick={() => handleDeleteSubmission(s.id, s.reviewerName, s.caseId)}
-                            title={`Hapus penilaian ${s.caseId}`}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* DETAILED SIDE-BY-SIDE MODAL FOR SELECTED CASE */}
-      {inspectedCase && (
-        <div className="modal-overlay" onClick={() => setInspectCaseId(null)}>
-          <div
-            className="modal-dialog modal-dialog-lg"
-            onClick={e => e.stopPropagation()}
-            style={{ maxWidth: "850px" }}
-          >
-            <div className="modal-header">
-              <h3 className="modal-title">
-                Perbandingan {inspectedCase.caseId} &bull; {inspectedCase.targetAppNameSanitized}
-              </h3>
-              <button
-                type="button"
-                className="modal-close-btn"
-                onClick={() => setInspectCaseId(null)}
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="modal-body">
-              <div className="modal-case-summary-card">
-                <span className="summary-title">{inspectedCase.findingTitle}</span>
-                <span className="summary-subtitle">
-                  Ref: {inspectedCase.controlId} &bull; {inspectedCase.masvsCategory}
-                </span>
+                  <button
+                    type="button"
+                    className="btn-add-evaluator-slot"
+                    onClick={handleAddReviewerSlot}
+                    title="Tambah slot penilai lain jika diperlukan"
+                  >
+                    <Plus size={14} />
+                    <span>Tambah Evaluator</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Side-by-Side 8 Metrics Comparison Table */}
-              <h4 className="detail-section-title">Perbandingan nilai 8 metrik CVSS:</h4>
-              <div className="table-responsive">
-                <table className="detail-metrics-table">
+              {/* Comparison Table */}
+              <div className="comparison-table-wrapper">
+                <table className="comparison-table">
                   <thead>
                     <tr>
-                      <th>Metrik</th>
-                      {activeReviewers.map(rName => (
-                        <th key={rName}>{rName}</th>
+                      <th style={{ width: "16%" }}>Kasus &amp; Aplikasi</th>
+                      <th style={{ width: "24%" }}>Kerentanan</th>
+                      {activeReviewers.map((name, i) => (
+                        <th key={name} style={{ width: `${40 / Math.max(1, activeReviewers.length)}%` }}>
+                          <div className="evaluator-col-header">
+                            <span className="evaluator-col-name">{name}</span>
+                            <span className="evaluator-col-role">
+                              {submissions.find(s => s.reviewerName === name)?.reviewerRole ||
+                                `Evaluator ${i + 1}`}
+                            </span>
+                          </div>
+                        </th>
                       ))}
-                      <th>Status</th>
+                      <th style={{ width: "10%" }}>Rata-rata</th>
+                      <th style={{ width: "10%" }}>Status Vektor</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {metricKeys.map(k => {
-                      const vals = activeReviewers.map(rName => {
-                        const sub = submissions.find(
-                          s => s.caseId === inspectedCase.caseId && s.reviewerName === rName
-                        );
-                        return sub ? sub.metrics[k] : "-";
-                      });
-
-                      const nonDash = vals.filter(v => v !== "-");
-                      const allSame = nonDash.length > 0 && nonDash.every(v => v === nonDash[0]);
-                      const hasDiscrepancy = nonDash.length >= 2 && !allSame;
+                    {cases.map(tc => {
+                      const comp = calculateCaseComparison(tc.caseId);
 
                       return (
-                        <tr
-                          key={k}
-                          className={hasDiscrepancy ? "metric-row-discrepancy" : "metric-row-same"}
-                        >
+                        <tr key={tc.caseId}>
                           <td>
-                            <strong>{k}</strong>
+                            <div className="case-id-text">{tc.caseId}</div>
+                            <div className="app-name-sm">{tc.targetAppNameSanitized}</div>
                           </td>
-                          {vals.map((v, i) => (
-                            <td key={i} className="font-mono font-bold">
-                              {v}
-                            </td>
-                          ))}
                           <td>
-                            {hasDiscrepancy ? (
-                              <span className="text-amber font-semibold text-xs">
-                                Berbeda
-                              </span>
-                            ) : nonDash.length >= 2 ? (
-                              <span className="text-emerald font-semibold text-xs">
-                                Sesuai
-                              </span>
+                            <div className="finding-title-sm">{tc.findingTitle}</div>
+                            <div className="control-reference">{tc.controlId}</div>
+                          </td>
+
+                          {activeReviewers.map(name => {
+                            const sub = comp.submissions.find(s => s.reviewerName === name);
+                            if (!sub) {
+                              return (
+                                <td key={name} className="reviewer-score-cell">
+                                  <span className="text-muted italic text-xs">Belum dinilai</span>
+                                </td>
+                              );
+                            }
+
+                            return (
+                              <td key={name} className="reviewer-score-cell">
+                                <div className="score-sev-row">
+                                  <span className="score-cell-badge">{sub.baseScore.toFixed(1)}</span>
+                                  <span className={`badge-severity-${sub.severity.toLowerCase()} text-xs font-semibold`}>
+                                    {sub.severity}
+                                  </span>
+                                </div>
+                                <div className="vector-mini">{sub.vectorString}</div>
+                                {sub.justification && (
+                                  <div className="justification-excerpt" title={sub.justification}>
+                                    &ldquo;{sub.justification.slice(0, 75)}
+                                    {sub.justification.length > 75 ? "..." : ""}&rdquo;
+                                  </div>
+                                )}
+                              </td>
+                            );
+                          })}
+
+                          <td>
+                            {comp.avgScore !== null ? (
+                              <div>
+                                <span className="font-mono font-bold">{comp.avgScore.toFixed(1)}</span>
+                                {comp.delta > 0 && (
+                                  <div className="diff-metrics-text">&plusmn;{comp.delta.toFixed(1)} pts</div>
+                                )}
+                              </div>
                             ) : (
                               <span className="text-muted text-xs">-</span>
+                            )}
+                          </td>
+
+                          <td>
+                            {comp.isComplete ? (
+                              comp.isIdenticalVector ? (
+                                <span className="status-badge consensus" title="Seluruh evaluator memilih 8 metrik yang sama persis">
+                                  Vektor identik
+                                </span>
+                              ) : (
+                                <div className="status-discrepancy-block">
+                                  <span className="status-badge discrepancy" title="Terdapat perbedaan pilihan metrik antar-evaluator">
+                                    Vektor berbeda
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="btn-inspect-detail mt-2"
+                                    onClick={() => setInspectCaseId(tc.caseId)}
+                                    title="Lihat detail perbedaan metrik dan alasan evaluator"
+                                  >
+                                    <Eye size={12} />
+                                    <span>Bandingkan</span>
+                                  </button>
+                                </div>
+                              )
+                            ) : (
+                              <span className="status-badge pending">Menunggu</span>
                             )}
                           </td>
                         </tr>
@@ -695,47 +495,197 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
                   </tbody>
                 </table>
               </div>
-
-              {/* Side-by-Side Evaluator Justifications */}
-              <h4 className="detail-section-title mt-4">Alasan penilaian tertulis:</h4>
-              <div className="justifications-side-grid">
-                {activeReviewers.map(rName => {
-                  const sub = submissions.find(
-                    s => s.caseId === inspectedCase.caseId && s.reviewerName === rName
-                  );
-                  return (
-                    <div key={rName} className="justification-expert-card">
-                      <div className="justification-card-header">
-                        <strong className="justification-author">{rName}</strong>
-                        {sub && (
-                          <span className="justification-score-badge">
-                            {sub.baseScore.toFixed(1)} ({sub.severity})
-                          </span>
-                        )}
-                      </div>
-                      <p className="justification-card-text">
-                        {sub?.justification || (
-                          <span className="text-muted italic">Tidak ada alasan yang dicatat</span>
-                        )}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="modal-footer">
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => setInspectCaseId(null)}
-              >
-                Tutup
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* Tab 2: Raw All Submissions Table */}
+        {activeTab === "all" && (
+          <div className="admin-content-area all-submissions-tab">
+            <div className="submissions-summary-table-box">
+              <div className="table-header-title">
+                <h3>Daftar Seluruh Penilaian Masuk ({submissions.length} Record)</h3>
+                <button type="button" className="btn-export-csv" onClick={handleDownloadCsv}>
+                  <Download size={14} />
+                  <span>Unduh CSV</span>
+                </button>
+              </div>
+
+              <div className="table-responsive">
+                <table className="raw-data-table">
+                  <thead>
+                    <tr>
+                      <th>Kasus</th>
+                      <th>Evaluator</th>
+                      <th>Instansi</th>
+                      <th>Skor</th>
+                      <th>Keparahan</th>
+                      <th>Vector String</th>
+                      <th>Alasan Penilaian</th>
+                      <th>Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {submissions.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="text-center py-8 text-muted">
+                          {loading ? "Memuat data penilaian..." : "Belum ada penilaian yang tersimpan."}
+                        </td>
+                      </tr>
+                    ) : (
+                      submissions.map(sub => (
+                        <tr key={sub.id}>
+                          <td>
+                            <strong>{sub.caseId}</strong>
+                          </td>
+                          <td>{sub.reviewerName}</td>
+                          <td className="text-xs text-muted">{sub.reviewerRole || "-"}</td>
+                          <td>
+                            <span className="score-badge-sm">{sub.baseScore.toFixed(1)}</span>
+                          </td>
+                          <td>
+                            <span className={`badge-severity-${sub.severity.toLowerCase()} text-xs font-semibold`}>
+                              {sub.severity}
+                            </span>
+                          </td>
+                          <td>
+                            <code className="vector-snippet">{sub.vectorString}</code>
+                          </td>
+                          <td className="justification-col">
+                            <span className="justification-text">{sub.justification}</span>
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              className="btn-delete-record-btn"
+                              onClick={() =>
+                                handleDeleteSubmission(sub.id, sub.reviewerName, sub.caseId)
+                              }
+                              title="Hapus penilaian ini"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* In-Depth Case Discrepancy Inspection Modal */}
+        {inspectCaseId && inspectedCase && (
+          <div className="modal-overlay" onClick={() => setInspectCaseId(null)}>
+            <div
+              className="modal-dialog modal-dialog-lg"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="modal-header">
+                <div className="modal-title-row">
+                  <AlertTriangle size={18} className="text-amber" />
+                  <h3 className="modal-title">
+                    Detail Komparasi Metrik: {inspectCaseId} - {inspectedCase.findingTitle}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  className="modal-close-btn"
+                  onClick={() => setInspectCaseId(null)}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="modal-body">
+                <div className="modal-case-summary-card">
+                  <div>
+                    <strong>Aplikasi:</strong> {inspectedCase.targetAppNameSanitized}
+                  </div>
+                  <div>
+                    <strong>Kontrol OWASP MASVS:</strong> {inspectedCase.controlId} (
+                    {inspectedCase.masvsCategory})
+                  </div>
+                </div>
+
+                <h4 className="detail-section-title">Perbandingan Pilihan 8 Metrik CVSS v3.1:</h4>
+                <table className="detail-metrics-table">
+                  <thead>
+                    <tr>
+                      <th>Metrik</th>
+                      {activeReviewers.map(rName => (
+                        <th key={rName}>{rName}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {metricKeys.map(k => {
+                      const values = activeReviewers.map(
+                        rName =>
+                          submissions.find(s => s.caseId === inspectCaseId && s.reviewerName === rName)
+                            ?.metrics[k] || "-"
+                      );
+                      const isDiscrepant =
+                        values.filter(v => v !== "-").length > 1 &&
+                        !values.every(v => v === values[0]);
+
+                      return (
+                        <tr
+                          key={k}
+                          className={isDiscrepant ? "metric-row-discrepancy" : "metric-row-same"}
+                        >
+                          <td>
+                            <strong>{k}</strong>
+                          </td>
+                          {values.map((v, idx) => (
+                            <td key={idx}>
+                              <span className="font-mono font-bold">{v}</span>
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                <h4 className="detail-section-title mt-4">Alasan Penilaian Evaluator:</h4>
+                <div className="justifications-side-grid">
+                  {activeReviewers.map(rName => {
+                    const sub = submissions.find(
+                      s => s.caseId === inspectCaseId && s.reviewerName === rName
+                    );
+                    return (
+                      <div key={rName} className="justification-expert-card">
+                        <div className="justification-card-header">
+                          <span className="justification-author">{rName}</span>
+                          <span className="justification-score-badge">
+                            {sub ? `${sub.baseScore.toFixed(1)} (${sub.severity})` : "Belum dinilai"}
+                          </span>
+                        </div>
+                        <p className="justification-card-text">
+                          {sub?.justification || "(Tidak ada justifikasi)"}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => setInspectCaseId(null)}
+                >
+                  Tutup Komparasi
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
