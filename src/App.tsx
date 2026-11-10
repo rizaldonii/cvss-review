@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { ReviewerProfile } from "./types";
 import { SANITIZED_TEST_CASES } from "./data/casesData";
 import {
@@ -15,10 +15,10 @@ import { AdminView } from "./views/AdminView";
 import { AssessmentGuideModal } from "./components/AssessmentGuideModal";
 
 export const App: React.FC = () => {
+  const [currentPath, setCurrentPath] = useState<string>(() => window.location.pathname);
   const [reviewer, setReviewer] = useState<ReviewerProfile | null>(() => getReviewerProfile());
   const [currentCaseIndex, setCurrentCaseIndex] = useState(0);
   const [isFinished, setIsFinished] = useState(false);
-  const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [completedCaseIds, setCompletedCaseIds] = useState<string[]>(() => {
     const saved = getReviewerProfile();
@@ -28,6 +28,22 @@ export const App: React.FC = () => {
       .filter(s => s.reviewerName.trim().toLowerCase() === saved.name.trim().toLowerCase())
       .map(s => s.caseId);
   });
+
+  // Listen to browser navigation (back / forward buttons)
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPath(window.location.pathname);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const navigateTo = (path: string) => {
+    if (window.location.pathname !== path) {
+      window.history.pushState(null, "", path);
+    }
+    setCurrentPath(path);
+  };
 
   const refreshCompletedCases = (name?: string) => {
     const targetName = name || reviewer?.name;
@@ -72,13 +88,25 @@ export const App: React.FC = () => {
     setIsFinished(true);
   };
 
+  // If user visits /admin or /admin/
+  if (currentPath === "/admin" || currentPath.startsWith("/admin/")) {
+    return (
+      <div className="app-root-layout">
+        <AdminView
+          cases={SANITIZED_TEST_CASES}
+          onClose={() => navigateTo("/")}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="app-root-layout">
       {/* Top Application Navigation */}
       <Navbar
         reviewer={reviewer}
         onLogout={handleLogout}
-        onOpenAdmin={() => setIsAdminOpen(true)}
+        onOpenAdmin={() => navigateTo("/admin")}
         onOpenGuide={() => setIsGuideOpen(true)}
         currentCaseIndex={currentCaseIndex}
         totalCases={SANITIZED_TEST_CASES.length}
@@ -115,14 +143,6 @@ export const App: React.FC = () => {
           />
         )}
       </main>
-
-      {/* Admin / Bab 4 Rekapitulasi Overlay */}
-      {isAdminOpen && (
-        <AdminView
-          cases={SANITIZED_TEST_CASES}
-          onClose={() => setIsAdminOpen(false)}
-        />
-      )}
 
       {/* CVSS v3.1 Assessment Guide Modal */}
       <AssessmentGuideModal

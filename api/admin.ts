@@ -1,5 +1,12 @@
 import crypto from "node:crypto";
-import { createClient } from "@supabase/supabase-js";
+import {
+  isD1Configured,
+  isSupabaseConfigured,
+  fetchAllV2Submissions,
+  deleteSubmissionsFromDb,
+  upsertSubmission,
+  getSupabaseClient
+} from "./_db.ts";
 
 // In-memory brute-force protection
 const failedAttempts = new Map<string, { count: number; firstAttempt: number; lockedUntil?: number }>();
@@ -20,18 +27,15 @@ function checkRateLimit(ip: string): { allowed: boolean; remainingMinutes?: numb
   const record = failedAttempts.get(ip);
   if (!record) return { allowed: true };
 
-  // If locked, check if lock period (10 minutes) has passed
   if (record.lockedUntil) {
     if (now < record.lockedUntil) {
       const remainingMinutes = Math.ceil((record.lockedUntil - now) / 60000);
       return { allowed: false, remainingMinutes };
     }
-    // Lock expired, reset
     failedAttempts.delete(ip);
     return { allowed: true };
   }
 
-  // Reset after 15 minutes of inactivity
   if (now - record.firstAttempt > 15 * 60 * 1000) {
     failedAttempts.delete(ip);
     return { allowed: true };
@@ -93,22 +97,10 @@ function verifySessionToken(token: string | undefined): boolean {
   }
 }
 
-function getSupabaseServerClient() {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_ANON_KEY ||
-    process.env.VITE_SUPABASE_ANON_KEY;
-
-  if (!url || !key) return null;
-  return createClient(url, key);
-}
-
 export default async function handler(req: any, res: any) {
-  // Enable CORS if accessed from preview/subdomains
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS,PATCH,DELETE,POST,PUT");
+  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS,POST,DELETE");
   res.setHeader(
     "Access-Control-Allow-Headers",
     "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization"
@@ -195,45 +187,32 @@ export default async function handler(req: any, res: any) {
     });
   }
 
-  const supabase = getSupabaseServerClient();
+  // 3. ACTION: STATUS
+  if (action === "status") {
+    return res.status(200).json({
+      success: true,
+      d1Configured: isD1Configured(),
+      supabaseConfigured: isSupabaseConfigured(),
+      activeProvider: isD1Configured() ? "Cloudflare D1" : isSupabaseConfigured() ? "Supabase" : "Penyimpanan Lokal"
+    });
+  }
 
-  // 3. ACTION: SUBMISSIONS
+  // 4. ACTION: SUBMISSIONS
   if (action === "submissions") {
-    if (!supabase) {
-      return res.status(500).json({
-        success: false,
-        error: "Koneksi Supabase server belum disetel (SUPABASE_URL atau VITE_SUPABASE_URL tidak ditemukan)."
-      });
-    }
-
     try {
-      const { data, error } = await supabase
-        .from("cvss_reviews")
-        .select("*")
-        .in("case_id", ["CASE-01", "CASE-02", "CASE-03", "CASE-04"])
-        .or("version.eq.v2,id.like.v2_%")
-        .order("submitted_at", { ascending: true });
-
-      if (error) {
-        return res.status(500).json({ success: false, error: error.message });
-      }
-
-      return res.status(200).json({ success: true, data: data || [] });
+      const result = await fetchAllV2Submissions();
+      return res.status(200).json({
+        success: true,
+        data: result.data,
+        provider: result.provider
+      });
     } catch (e: any) {
       return res.status(500).json({ success: false, error: e?.message || "Gagal mengambil data dari server." });
     }
   }
 
-  // 4. ACTION: DELETE
+  // 5. ACTION: DELETE
   if (action === "delete") {
-    if (req.method !== "POST") {
-      return res.status(405).json({ success: false, error: "Method Not Allowed" });
-    }
-
-    if (!supabase) {
-      return res.status(500).json({ success: false, error: "Koneksi Supabase server belum disetel." });
-    }
-
     let body = req.body;
     if (typeof body === "string") {
       try {
@@ -243,29 +222,86 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    const { id, reviewerName } = body;
+    const { id, reviewerName } = body || {};
 
     try {
-      if (id) {
-        const { error } = await supabase.from("cvss_reviews").delete().eq("id", id);
-        if (error) throw error;
-      } else if (reviewerName) {
-        const { error } = await supabase
-          .from("cvss_reviews")
-          .delete()
-          .ilike("reviewer_name", reviewerName.trim())
-          .or("version.eq.v2,id.like.v2_%");
-        if (error) throw error;
-      } else {
-        return res.status(400).json({ success: false, error: "Parameter id atau reviewerName diperlukan." });
-      }
-
+      await deleteSubmissionsFromDb({ id, reviewerName });
       return res.status(200).json({ success: true, message: "Data berhasil dihapus dari server." });
     } catch (e: any) {
       return res.status(500).json({ success: false, error: e?.message || "Gagal menghapus data dari server." });
     }
   }
 
+  // 6. ACTION: MIGRATE FROM SUPABASE TO CLOUDFLARE D1
+  if (action === "migrate-from-supabase") {
+    if (!isD1Configured()) {
+      return res.status(400).json({
+        success: false,
+        error: "Cloudflare D1 belum terkonfigurasi. Setel kredensial D1 terlebih dahulu."
+      });
+    }
+
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      return res.status(400).json({
+        success: false,
+        error: "Supabase belum terkonfigurasi untuk migrasi."
+      });
+    }
+
+    try {
+      const { data: supaRows, error: supaErr } = await supabase
+        .from("cvss_reviews")
+        .select("*");
+
+      if (supaErr) throw supaErr;
+      if (!supaRows || supaRows.length === 0) {
+        return res.status(200).json({
+          success: true,
+          count: 0,
+          message: "Tidak ada data di Supabase untuk dimigrasikan."
+        });
+      }
+
+      let migratedCount = 0;
+      for (const row of supaRows) {
+        await upsertSubmission({
+          id: row.id,
+          caseId: row.case_id,
+          reviewerName: row.reviewer_name,
+          reviewerRole: row.reviewer_role,
+          version: row.version || "v2",
+          metrics: {
+            AV: row.av,
+            AC: row.ac,
+            PR: row.pr,
+            UI: row.ui,
+            S: row.s,
+            C: row.c,
+            I: row.i,
+            A: row.a
+          },
+          baseScore: row.base_score,
+          severity: row.severity,
+          vectorString: row.vector_string,
+          justification: row.justification,
+          submittedAt: row.submitted_at
+        });
+        migratedCount++;
+      }
+
+      return res.status(200).json({
+        success: true,
+        count: migratedCount,
+        message: `Berhasil memigrasikan ${migratedCount} penilaian dari Supabase ke Cloudflare D1.`
+      });
+    } catch (e: any) {
+      return res.status(500).json({
+        success: false,
+        error: `Gagal migrasi: ${e?.message || "Terjadi kesalahan saat memindahkan data"}`
+      });
+    }
+  }
+
   return res.status(400).json({ success: false, error: "Aksi tidak dikenali." });
 }
-

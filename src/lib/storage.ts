@@ -1,5 +1,3 @@
-import { createClient } from "@supabase/supabase-js";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CaseEvaluationSubmission, ReviewerProfile, SupabaseConfig } from "../types";
 
 export const CURRENT_CASE_VERSION = "v2";
@@ -12,8 +10,6 @@ const STORAGE_KEYS = {
   SUPABASE_CONFIG: "cvss_review_supabase_config",
   ADMIN_TOKEN: "cvss_admin_token"
 };
-
-let supabaseInstance: SupabaseClient | null = null;
 
 export function getReviewerSessionId(): string {
   let sid = localStorage.getItem(STORAGE_KEYS.SESSION_ID);
@@ -42,28 +38,6 @@ export function getSupabaseConfig(): SupabaseConfig {
   }
 
   return { supabaseUrl: "", supabaseAnonKey: "" };
-}
-
-export function saveSupabaseConfig(config: SupabaseConfig): void {
-  localStorage.setItem(STORAGE_KEYS.SUPABASE_CONFIG, JSON.stringify(config));
-  supabaseInstance = null; // reset client
-}
-
-export function getSupabaseClient(): SupabaseClient | null {
-  if (supabaseInstance) return supabaseInstance;
-
-  const config = getSupabaseConfig();
-  if (config.supabaseUrl && config.supabaseAnonKey) {
-    try {
-      supabaseInstance = createClient(config.supabaseUrl, config.supabaseAnonKey);
-      return supabaseInstance;
-    } catch (e) {
-      console.error("Failed to initialize Supabase client:", e);
-      return null;
-    }
-  }
-
-  return null;
 }
 
 // ==================== Serverless Admin Auth & Operations ====================
@@ -126,9 +100,64 @@ export async function logoutAdmin(): Promise<void> {
   sessionStorage.removeItem(STORAGE_KEYS.ADMIN_TOKEN);
 }
 
+export async function getAdminDatabaseStatus(): Promise<{
+  d1Configured: boolean;
+  supabaseConfigured: boolean;
+  activeProvider: string;
+}> {
+  const token = sessionStorage.getItem(STORAGE_KEYS.ADMIN_TOKEN);
+  if (!token) {
+    return { d1Configured: false, supabaseConfigured: false, activeProvider: "Penyimpanan Lokal" };
+  }
+
+  try {
+    const res = await fetch("/api/admin?action=status", {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        d1Configured: Boolean(data.d1Configured),
+        supabaseConfigured: Boolean(data.supabaseConfigured),
+        activeProvider: data.activeProvider || "Penyimpanan Lokal"
+      };
+    }
+  } catch {
+    // fallback
+  }
+
+  return { d1Configured: false, supabaseConfigured: false, activeProvider: "Penyimpanan Lokal" };
+}
+
+export async function migrateSupabaseToD1(): Promise<{
+  success: boolean;
+  count?: number;
+  message: string;
+}> {
+  const token = sessionStorage.getItem(STORAGE_KEYS.ADMIN_TOKEN);
+  if (!token) {
+    return { success: false, message: "Token admin tidak ditemukan. Silakan login kembali." };
+  }
+
+  try {
+    const res = await fetch("/api/admin?action=migrate-from-supabase", {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await res.json();
+    return {
+      success: Boolean(data.success),
+      count: data.count,
+      message: data.message || data.error || "Proses migrasi selesai."
+    };
+  } catch (err: any) {
+    return { success: false, message: err?.message || "Gagal menghubungi server migrasi." };
+  }
+}
+
 export async function getAdminSubmissions(): Promise<{
   data: CaseEvaluationSubmission[];
   fromCloud: boolean;
+  provider?: string;
   error?: string;
 }> {
   const token = sessionStorage.getItem(STORAGE_KEYS.ADMIN_TOKEN);
@@ -163,7 +192,7 @@ export async function getAdminSubmissions(): Promise<{
             justification: row.justification || "",
             submittedAt: row.submitted_at
           }));
-          return { data: mapped, fromCloud: true };
+          return { data: mapped, fromCloud: true, provider: body.provider };
         }
       }
     } catch (e: any) {
@@ -172,11 +201,11 @@ export async function getAdminSubmissions(): Promise<{
   }
 
   // Fallback to local submissions if API is unavailable or offline
-  return { data: getLocalSubmissions(), fromCloud: false };
+  return { data: getLocalSubmissions(), fromCloud: false, provider: "Penyimpanan Lokal" };
 }
 
 export async function deleteAdminSubmission(id: string): Promise<boolean> {
-  // Delete from local
+  // Delete from local storage
   const local = getRawStoredSubmissions();
   const filtered = local.filter(s => s.id !== id);
   localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(filtered));
@@ -260,7 +289,7 @@ export function getRawStoredSubmissions(): CaseEvaluationSubmission[] {
 
 export function getLocalSubmissions(): CaseEvaluationSubmission[] {
   const all = getRawStoredSubmissions();
-  // Filter strictly for current v2 4-case format (no accepting unversioned v1 submissions)
+  // Filter strictly for current v2 4-case format
   return all.filter(
     s => VALID_CASE_IDS.includes(s.caseId) && s.version === CURRENT_CASE_VERSION
   );
@@ -300,94 +329,58 @@ export async function saveSubmission(
     reviewerSessionId: sessionId
   };
 
-  // 1. Simpan di perangkat lokal terlebih dahulu
+  // 1. Simpan di perangkat lokal terlebih dahulu (jaminan data tidak hilang)
   saveLocalSubmission(enrichedSub);
 
-  const client = getSupabaseClient();
-  if (!client) {
-    return {
-      success: true,
-      cloudSynced: false,
-      message: "Tersimpan di perangkat ini. Belum terkirim ke server (koneksi database belum disetel)."
-    };
-  }
-
+  // 2. Kirim ke Server API (Cloudflare D1 atau Supabase)
   try {
-    // 2. Cegah penimpaan data antar-pengguna dengan nama yang sama dari perangkat berbeda
-    const localMatches = getLocalSubmissions().filter(
-      s => s.reviewerName.trim().toLowerCase() === sub.reviewerName.trim().toLowerCase()
-    );
+    const res = await fetch("/api/submissions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sub: enrichedSub })
+    });
 
-    // Jika ini pengisian pertama dari browser ini untuk nama tersebut, pastikan nama belum dipakai orang lain di server
-    if (localMatches.length <= 1) {
-      const { data: existingRecords, error: checkError } = await client
-        .from("cvss_reviews")
-        .select("reviewer_name, case_id")
-        .ilike("reviewer_name", sub.reviewerName.trim())
-        .or("version.eq.v2,id.like.v2_%")
-        .limit(1);
-
-      if (!checkError && existingRecords && existingRecords.length > 0) {
-        // Jika nama sudah ada di cloud tapi tidak ada riwayat lokal di browser ini
-        const isKnownLocal = localStorage.getItem("cvss_known_reviewer_" + sub.reviewerName.trim().toLowerCase());
-        if (!isKnownLocal) {
-          return {
-            success: false,
-            cloudSynced: false,
-            message: `Nama "${sub.reviewerName}" telah digunakan dari perangkat lain. Tambahkan inisial atau instansi pembeda untuk menghindari tumpang tindih data.`
-          };
-        }
-      }
-    }
-
-    // Tandai nama reviewer ini sah untuk browser ini
-    localStorage.setItem("cvss_known_reviewer_" + sub.reviewerName.trim().toLowerCase(), "true");
-
-    const { error } = await client.from("cvss_reviews").upsert(
-      {
-        id: `v2_${sub.caseId}_${encodeURIComponent(sub.reviewerName.trim().toLowerCase())}`,
-        case_id: sub.caseId,
-        reviewer_name: sub.reviewerName.trim(),
-        reviewer_role: sub.reviewerRole.trim(),
-        version: CURRENT_CASE_VERSION,
-        av: sub.metrics.AV,
-        ac: sub.metrics.AC,
-        pr: sub.metrics.PR,
-        ui: sub.metrics.UI,
-        s: sub.metrics.S,
-        c: sub.metrics.C,
-        i: sub.metrics.I,
-        a: sub.metrics.A,
-        base_score: sub.baseScore,
-        severity: sub.severity,
-        vector_string: sub.vectorString,
-        justification: sub.justification.trim(),
-        submitted_at: sub.submittedAt
-      },
-      { onConflict: "case_id,reviewer_name" }
-    );
-
-    if (error) {
-      console.warn("Supabase upsert error:", error);
+    const data = await res.json();
+    if (res.ok && data.success) {
       return {
-        success: false,
-        cloudSynced: false,
-        message: `Tersimpan di perangkat ini, namun gagal terkirim ke server: ${error.message}`
+        success: true,
+        cloudSynced: true,
+        message: data.message || "Penilaian berhasil dikirim dan tersimpan di database server."
       };
     }
 
     return {
-      success: true,
-      cloudSynced: true,
-      message: "Penilaian berhasil dikirim dan tersimpan di server."
+      success: false,
+      cloudSynced: false,
+      message:
+        data.message ||
+        data.error ||
+        "Tersimpan di perangkat ini, namun belum terkirim ke server database."
     };
   } catch (err: any) {
     return {
       success: false,
       cloudSynced: false,
-      message: `Tersimpan di perangkat ini, gagal terhubung ke server: ${err?.message || "Koneksi terputus"}`
+      message: `Tersimpan di perangkat ini, namun gagal terhubung ke server: ${err?.message || "Koneksi terputus"}`
     };
   }
+}
+
+export async function checkReviewerCloudStatus(reviewerName: string): Promise<string[]> {
+  try {
+    const res = await fetch(
+      `/api/submissions?reviewerName=${encodeURIComponent(reviewerName.trim())}`
+    );
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.caseIds)) {
+        return data.caseIds;
+      }
+    }
+  } catch {
+    // offline
+  }
+  return [];
 }
 
 // ==================== Export Helpers ====================

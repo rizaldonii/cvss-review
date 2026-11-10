@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
 import type { ReviewerProfile, TestCaseDossier } from "../types";
-import { getLocalSubmissions, exportToCsv, getSupabaseClient, saveSubmission } from "../lib/storage";
+import {
+  getLocalSubmissions,
+  exportToCsv,
+  saveSubmission,
+  checkReviewerCloudStatus
+} from "../lib/storage";
 import {
   RotateCcw,
   FileSpreadsheet,
@@ -30,18 +35,9 @@ export const ThankYouView: React.FC<ThankYouViewProps> = ({
   const [syncFeedback, setSyncFeedback] = useState<string>("");
 
   const refreshCloudStatus = useCallback(async () => {
-    const client = getSupabaseClient();
-    if (!client) return;
-
     try {
-      const { data } = await client
-        .from("cvss_reviews")
-        .select("case_id")
-        .ilike("reviewer_name", reviewer.name.trim());
-
-      if (data) {
-        setCloudSyncedCaseIds(data.map(d => d.case_id));
-      }
+      const syncedIds = await checkReviewerCloudStatus(reviewer.name);
+      setCloudSyncedCaseIds(syncedIds);
     } catch {
       // offline or not reachable
     }
@@ -49,23 +45,16 @@ export const ThankYouView: React.FC<ThankYouViewProps> = ({
 
   useEffect(() => {
     let mounted = true;
-    const client = getSupabaseClient();
-    if (!client) return;
-
-    client
-      .from("cvss_reviews")
-      .select("case_id")
-      .ilike("reviewer_name", reviewer.name.trim())
-      .then(
-        ({ data }) => {
-          if (mounted && data) {
-            setCloudSyncedCaseIds(data.map(d => d.case_id));
-          }
-        },
-        () => {
-          // ignore offline / network error
+    checkReviewerCloudStatus(reviewer.name).then(
+      syncedIds => {
+        if (mounted) {
+          setCloudSyncedCaseIds(syncedIds);
         }
-      );
+      },
+      () => {
+        // ignore offline / network error
+      }
+    );
 
     return () => {
       mounted = false;

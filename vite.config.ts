@@ -1,25 +1,30 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig, loadEnv } from 'vite'
 import adminHandler from './api/admin.ts'
+import submissionsHandler from './api/submissions.ts'
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
 
-  // Populate environment variables for serverless admin during dev
+  // Populate environment variables for serverless endpoints during dev
   if (env.ADMIN_PASSWORD) process.env.ADMIN_PASSWORD = env.ADMIN_PASSWORD
   if (env.ADMIN_SESSION_SECRET) process.env.ADMIN_SESSION_SECRET = env.ADMIN_SESSION_SECRET
   if (env.VITE_SUPABASE_URL) process.env.SUPABASE_URL = env.VITE_SUPABASE_URL
   if (env.VITE_SUPABASE_ANON_KEY) process.env.SUPABASE_ANON_KEY = env.VITE_SUPABASE_ANON_KEY
+  if (env.CLOUDFLARE_ACCOUNT_ID) process.env.CLOUDFLARE_ACCOUNT_ID = env.CLOUDFLARE_ACCOUNT_ID
+  if (env.CLOUDFLARE_D1_DATABASE_ID) process.env.CLOUDFLARE_D1_DATABASE_ID = env.CLOUDFLARE_D1_DATABASE_ID
+  if (env.CLOUDFLARE_API_TOKEN) process.env.CLOUDFLARE_API_TOKEN = env.CLOUDFLARE_API_TOKEN
 
   return {
     plugins: [
       react(),
       {
-        name: 'local-api-admin-server',
+        name: 'local-api-endpoints',
         configureServer(server) {
           server.middlewares.use((req, res, next) => {
-            if (req.url && req.url.startsWith('/api/admin')) {
+            const url = req.url || ''
+            if (url.startsWith('/api/admin') || url.startsWith('/api/submissions')) {
               let body = ''
               req.on('data', chunk => {
                 body += chunk
@@ -46,7 +51,11 @@ export default defineConfig(({ mode }) => {
                   method: req.method
                 }
                 try {
-                  await adminHandler(customReq, dummyRes)
+                  if (url.startsWith('/api/admin')) {
+                    await adminHandler(customReq, dummyRes)
+                  } else {
+                    await submissionsHandler(customReq, dummyRes)
+                  }
                 } catch (err: any) {
                   res.statusCode = 500
                   res.setHeader('Content-Type', 'application/json')

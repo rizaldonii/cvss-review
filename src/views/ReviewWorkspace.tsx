@@ -213,11 +213,8 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
               </div>
             )}
 
-            {/* Score & Vector Display (Preview emerges only after metrics and justification are filled) */}
-            <ScoreGauge
-              result={calculationResult}
-              hasJustification={justification.trim().length >= 15}
-            />
+            {/* Score & Vector Display (Automatically calculates score when 8 metrics are complete) */}
+            <ScoreGauge result={calculationResult} />
 
             {/* 8 Base Metrics Segmented Selectors with Inline Explanation */}
             <CvssSelector metrics={metrics} onChange={handleMetricChange} />
