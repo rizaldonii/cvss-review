@@ -420,6 +420,70 @@ export async function checkReviewerCloudStatus(reviewerName: string): Promise<st
   return [];
 }
 
+/**
+ * Mengambil seluruh progress evaluasi yang tersimpan di cloud untuk nama penilai tertentu,
+ * dan menyelaraskannya ke penyimpanan lokal agar penilai dapat melanjutkan penilaian.
+ */
+export async function fetchAndSyncReviewerProgress(reviewerName: string): Promise<{
+  submissions: CaseEvaluationSubmission[];
+  caseIds: string[];
+  reviewerRole?: string;
+}> {
+  const cleanName = reviewerName.trim();
+  if (!cleanName) {
+    return { submissions: [], caseIds: [] };
+  }
+
+  // 1. Ambil data lokal terlebih dahulu
+  const localSubs = getLocalSubmissions().filter(
+    s => s.reviewerName.trim().toLowerCase() === cleanName.toLowerCase()
+  );
+
+  let cloudSubs: CaseEvaluationSubmission[] = [];
+  let cloudRole: string | undefined;
+
+  // 2. Query ke Server API (Cloudflare D1 atau Supabase)
+  try {
+    const res = await fetch(
+      `/api/submissions?reviewerName=${encodeURIComponent(cleanName)}`
+    );
+    if (res.ok) {
+      const text = await res.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = {};
+      }
+
+      if (data.success && Array.isArray(data.submissions)) {
+        cloudSubs = data.submissions;
+        cloudRole = data.reviewerRole;
+
+        // Sinkronisasikan setiap cloud submission ke localStorage
+        for (const sub of cloudSubs) {
+          saveLocalSubmission(sub);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Gagal mengambil progress dari server:", err);
+  }
+
+  // 3. Ambil data gabungan terbaru
+  const allMerged = getLocalSubmissions().filter(
+    s => s.reviewerName.trim().toLowerCase() === cleanName.toLowerCase()
+  );
+
+  const caseIds = Array.from(new Set(allMerged.map(s => s.caseId)));
+
+  return {
+    submissions: allMerged,
+    caseIds,
+    reviewerRole: cloudRole || localSubs[0]?.reviewerRole
+  };
+}
+
 // ==================== Export Helpers ====================
 
 export function exportToCsv(submissions: CaseEvaluationSubmission[]): string {

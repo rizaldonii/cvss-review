@@ -167,7 +167,7 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  // 1. GET: Check submitted cases for a reviewer
+  // 1. GET: Check submitted cases & load reviewer progress
   if (req.method === "GET") {
     const url = new URL(req.url, "http://localhost");
     const reviewerName = url.searchParams.get("reviewerName");
@@ -179,29 +179,89 @@ export default async function handler(req: any, res: any) {
     try {
       if (isD1Configured()) {
         const rows = await queryD1(
-          "SELECT case_id FROM cvss_reviews WHERE LOWER(reviewer_name) = LOWER(?) AND (version = 'v2' OR id LIKE 'v2_%');",
+          "SELECT * FROM cvss_reviews WHERE LOWER(reviewer_name) = LOWER(?) AND (version = 'v2' OR id LIKE 'v2_%') ORDER BY submitted_at ASC;",
           [reviewerName.trim()]
         );
         const caseIds = rows.map((r: any) => r.case_id);
-        return res.status(200).json({ success: true, caseIds, provider: "Cloudflare D1" });
+        const submissions = rows.map((r: any) => ({
+          id: r.id,
+          caseId: r.case_id,
+          reviewerName: r.reviewer_name,
+          reviewerRole: r.reviewer_role,
+          version: r.version || "v2",
+          metrics: {
+            AV: r.av,
+            AC: r.ac,
+            PR: r.pr,
+            UI: r.ui,
+            S: r.s,
+            C: r.c,
+            I: r.i,
+            A: r.a
+          },
+          baseScore: Number(r.base_score),
+          severity: r.severity,
+          vectorString: r.vector_string,
+          justification: r.justification || "",
+          submittedAt: r.submitted_at
+        }));
+        const reviewerRole = rows[rows.length - 1]?.reviewer_role || "";
+        return res.status(200).json({
+          success: true,
+          caseIds,
+          submissions,
+          reviewerRole,
+          provider: "Cloudflare D1"
+        });
       }
 
       const supabase = getSupabaseClient();
       if (supabase) {
         const { data, error } = await supabase
           .from("cvss_reviews")
-          .select("case_id")
+          .select("*")
           .ilike("reviewer_name", reviewerName.trim())
-          .or("version.eq.v2,id.like.v2_%");
+          .or("version.eq.v2,id.like.v2_%")
+          .order("submitted_at", { ascending: true });
 
         if (error) throw error;
-        const caseIds = data ? data.map((r: any) => r.case_id) : [];
-        return res.status(200).json({ success: true, caseIds, provider: "Supabase" });
+        const rows = data || [];
+        const caseIds = rows.map((r: any) => r.case_id);
+        const submissions = rows.map((r: any) => ({
+          id: r.id,
+          caseId: r.case_id,
+          reviewerName: r.reviewer_name,
+          reviewerRole: r.reviewer_role,
+          version: r.version || "v2",
+          metrics: {
+            AV: r.av,
+            AC: r.ac,
+            PR: r.pr,
+            UI: r.ui,
+            S: r.s,
+            C: r.c,
+            I: r.i,
+            A: r.a
+          },
+          baseScore: Number(r.base_score),
+          severity: r.severity,
+          vectorString: r.vector_string,
+          justification: r.justification || "",
+          submittedAt: r.submitted_at
+        }));
+        const reviewerRole = rows[rows.length - 1]?.reviewer_role || "";
+        return res.status(200).json({
+          success: true,
+          caseIds,
+          submissions,
+          reviewerRole,
+          provider: "Supabase"
+        });
       }
 
-      return res.status(200).json({ success: true, caseIds: [], provider: "None" });
+      return res.status(200).json({ success: true, caseIds: [], submissions: [], provider: "None" });
     } catch (e: any) {
-      return res.status(200).json({ success: false, caseIds: [], error: e?.message });
+      return res.status(200).json({ success: false, caseIds: [], submissions: [], error: e?.message });
     }
   }
 

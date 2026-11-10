@@ -5,7 +5,8 @@ import {
   getReviewerProfile,
   saveReviewerProfile,
   clearReviewerProfile,
-  getLocalSubmissions
+  getLocalSubmissions,
+  fetchAndSyncReviewerProgress
 } from "./lib/storage";
 import { Navbar } from "./components/Navbar";
 import { LoginReviewer } from "./views/LoginReviewer";
@@ -60,12 +61,32 @@ export const App: React.FC = () => {
     setCompletedCaseIds(matching);
   };
 
-  const handleStartReview = (profile: ReviewerProfile) => {
+  const handleStartReview = async (profile: ReviewerProfile) => {
     saveReviewerProfile(profile);
     setReviewer(profile);
-    setCurrentCaseIndex(0);
-    setIsFinished(false);
-    refreshCompletedCases(profile.name);
+
+    // Sync cloud progress into local storage if any
+    const syncRes = await fetchAndSyncReviewerProgress(profile.name);
+    const completed = syncRes.caseIds;
+    setCompletedCaseIds(completed);
+
+    // Find the first unfinished case (e.g. index 0, 1, 2, or 3)
+    const firstIncompleteIdx = SANITIZED_TEST_CASES.findIndex(
+      c => !completed.includes(c.caseId)
+    );
+
+    if (firstIncompleteIdx >= 0) {
+      // Go directly to the first case that has not been submitted yet
+      setCurrentCaseIndex(firstIncompleteIdx);
+      setIsFinished(false);
+    } else if (completed.length >= SANITIZED_TEST_CASES.length) {
+      // All cases already completed! Show the summary page with options to review/edit
+      setCurrentCaseIndex(0);
+      setIsFinished(true);
+    } else {
+      setCurrentCaseIndex(0);
+      setIsFinished(false);
+    }
   };
 
   const handleLogout = () => {
