@@ -120,8 +120,3 @@ export interface CaseEvaluationSubmission {
   justification: string;
   submittedAt: string;
 }
-
-export interface SupabaseConfig {
-  supabaseUrl: string;
-  supabaseAnonKey: string;
-}

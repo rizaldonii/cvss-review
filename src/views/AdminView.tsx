@@ -6,7 +6,6 @@ import {
   logoutAdmin,
   getAdminSubmissions,
   getAdminDatabaseStatus,
-  migrateSupabaseToD1,
   deleteAdminSubmission,
   deleteAdminReviewerAll,
   exportToCsv,
@@ -26,8 +25,7 @@ import {
   LogOut,
   AlertTriangle,
   ArrowLeft,
-  RefreshCw,
-  Database
+  RefreshCw
 } from "lucide-react";
 
 interface AdminViewProps {
@@ -44,14 +42,8 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
   const [submissions, setSubmissions] = useState<CaseEvaluationSubmission[]>([]);
   const [isCloud, setIsCloud] = useState(false);
   const [dbProvider, setDbProvider] = useState<string>("");
-  const [dbStatus, setDbStatus] = useState<{
-    d1Configured: boolean;
-    supabaseConfigured: boolean;
-    activeProvider: string;
-  } | null>(null);
-  const [isMigrating, setIsMigrating] = useState(false);
-  const [migrationMessage, setMigrationMessage] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string>("");
   const [copiedLatex, setCopiedLatex] = useState(false);
 
   // Active view tab
@@ -65,16 +57,20 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
 
   const loadData = async () => {
     setLoading(true);
+    setLoadError("");
     try {
       const [subRes, statRes] = await Promise.all([
         getAdminSubmissions(),
         getAdminDatabaseStatus()
       ]);
 
+      if (subRes.error) {
+        setLoadError(subRes.error);
+      }
+
       setSubmissions(subRes.data);
       setIsCloud(subRes.fromCloud);
       setDbProvider(subRes.provider || statRes.activeProvider || "Penyimpanan Lokal");
-      setDbStatus(statRes);
 
       // Populate comparison slots strictly from actual submissions
       const unique = Array.from(new Set(subRes.data.map(s => s.reviewerName)));
@@ -92,6 +88,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
       });
     } catch (e: any) {
       console.warn("Error loading admin data:", e);
+      setLoadError(e?.message || "Gagal memuat data dari database Cloudflare D1.");
     } finally {
       setLoading(false);
     }
@@ -136,25 +133,6 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
     await logoutAdmin();
     setIsUnlocked(false);
     setPassword("");
-  };
-
-  const handleMigrate = async () => {
-    if (
-      !window.confirm(
-        "Salin dan migrasikan seluruh data penilaian dari Supabase ke Cloudflare D1? Data di Supabase tetap utuh sebagai cadangan aman."
-      )
-    ) {
-      return;
-    }
-
-    setIsMigrating(true);
-    setMigrationMessage("");
-    const res = await migrateSupabaseToD1();
-    setIsMigrating(false);
-    setMigrationMessage(res.message);
-    if (res.success) {
-      await loadData();
-    }
   };
 
   const handleReviewerSlotChange = (slotIndex: number, newReviewer: string) => {
@@ -353,23 +331,9 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
               {dbProvider}
             </span>
           ) : isCloud ? (
-            <span className="badge-cloud-online">Server Cloud</span>
+            <span className="badge-cloud-online">Cloudflare D1</span>
           ) : (
             <span className="badge-local-storage">Penyimpanan Lokal</span>
-          )}
-
-          {/* Migration Button (Supabase -> Cloudflare D1) */}
-          {dbStatus?.supabaseConfigured && dbStatus?.d1Configured && (
-            <button
-              type="button"
-              className="btn-migrate-d1"
-              onClick={handleMigrate}
-              disabled={isMigrating}
-              title="Salin dan migrasikan data dari Supabase ke Cloudflare D1 (backup aman tanpa menghapus Supabase)"
-            >
-              <Database size={13} />
-              <span>{isMigrating ? "Memigrasikan..." : "Migrasi Supabase ke D1"}</span>
-            </button>
           )}
 
           <button
@@ -377,7 +341,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
             className="btn-admin-refresh"
             onClick={loadData}
             disabled={loading}
-            title="Muat ulang data dari server"
+            title="Muat ulang data dari database server"
           >
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
             <span>Muat Ulang</span>
@@ -395,17 +359,15 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
         </div>
       </header>
 
-      {/* Migration feedback banner if any */}
-      {migrationMessage && (
-        <div className="migration-feedback-banner">
-          <span>{migrationMessage}</span>
-          <button
-            type="button"
-            className="btn-close-banner"
-            onClick={() => setMigrationMessage("")}
-            title="Tutup notifikasi"
-          >
-            <X size={14} />
+      {/* Error notification banner if any */}
+      {loadError && (
+        <div className="admin-error-banner">
+          <AlertTriangle size={18} className="text-red shrink-0" />
+          <div className="flex-1 text-sm font-medium">
+            <strong>Gagal Membaca Cloudflare D1:</strong> {loadError}
+          </div>
+          <button type="button" onClick={loadData} className="btn-retry-admin" disabled={loading}>
+            Coba Lagi
           </button>
         </div>
       )}
@@ -507,8 +469,14 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
             </div>
 
             {/* Comparison Table */}
-            <div className="comparison-table-wrapper">
-              <table className="comparison-table">
+            {loading && submissions.length === 0 ? (
+              <div className="admin-loading-state">
+                <RefreshCw size={24} className="animate-spin text-accent" />
+                <span className="admin-loading-text">Memuat perbandingan evaluator dari Cloudflare D1...</span>
+              </div>
+            ) : (
+              <div className="comparison-table-wrapper">
+                <table className="comparison-table">
                 <thead>
                   <tr>
                     <th style={{ width: "16%" }}>Kasus &amp; Aplikasi</th>
@@ -623,6 +591,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
                 </tbody>
               </table>
             </div>
+          )}
           </div>
         </div>
       )}
@@ -657,7 +626,18 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
                   {submissions.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="text-center py-8 text-muted">
-                        {loading ? "Memuat data penilaian..." : "Belum ada penilaian yang tersimpan."}
+                        {loading ? (
+                          <div className="admin-loading-state">
+                            <RefreshCw size={24} className="animate-spin text-accent" />
+                            <span className="admin-loading-text">Memuat seluruh data penilaian dari Cloudflare D1...</span>
+                          </div>
+                        ) : loadError ? (
+                          <div className="text-red font-medium py-4">
+                            Gagal membaca database: {loadError}
+                          </div>
+                        ) : (
+                          "Belum ada penilaian yang tersimpan di Cloudflare D1."
+                        )}
                       </td>
                     </tr>
                   ) : (

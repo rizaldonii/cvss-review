@@ -1,4 +1,4 @@
-import type { CaseEvaluationSubmission, ReviewerProfile, SupabaseConfig } from "../types";
+import type { CaseEvaluationSubmission, ReviewerProfile } from "../types";
 
 export const CURRENT_CASE_VERSION = "v2";
 export const VALID_CASE_IDS = ["CASE-01", "CASE-02", "CASE-03", "CASE-04"];
@@ -7,7 +7,6 @@ const STORAGE_KEYS = {
   REVIEWER: "cvss_review_active_reviewer",
   SESSION_ID: "cvss_review_browser_session_id",
   SUBMISSIONS: "cvss_review_submissions",
-  SUPABASE_CONFIG: "cvss_review_supabase_config",
   ADMIN_TOKEN: "cvss_admin_token"
 };
 
@@ -18,26 +17,6 @@ export function getReviewerSessionId(): string {
     localStorage.setItem(STORAGE_KEYS.SESSION_ID, sid);
   }
   return sid;
-}
-
-export function getSupabaseConfig(): SupabaseConfig {
-  const envUrl = import.meta.env.VITE_SUPABASE_URL || "";
-  const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
-
-  if (envUrl && envKey) {
-    return { supabaseUrl: envUrl, supabaseAnonKey: envKey };
-  }
-
-  const stored = localStorage.getItem(STORAGE_KEYS.SUPABASE_CONFIG);
-  if (stored) {
-    try {
-      return JSON.parse(stored);
-    } catch {
-      // ignore
-    }
-  }
-
-  return { supabaseUrl: "", supabaseAnonKey: "" };
 }
 
 // ==================== Serverless Admin Auth & Operations ====================
@@ -107,14 +86,15 @@ export async function logoutAdmin(): Promise<void> {
   sessionStorage.removeItem(STORAGE_KEYS.ADMIN_TOKEN);
 }
 
-export async function getAdminDatabaseStatus(): Promise<{
+export interface DatabaseStatus {
   d1Configured: boolean;
-  supabaseConfigured: boolean;
   activeProvider: string;
-}> {
+}
+
+export async function getAdminDatabaseStatus(): Promise<DatabaseStatus> {
   const token = sessionStorage.getItem(STORAGE_KEYS.ADMIN_TOKEN);
   if (!token) {
-    return { d1Configured: false, supabaseConfigured: false, activeProvider: "Penyimpanan Lokal" };
+    return { d1Configured: false, activeProvider: "Penyimpanan Lokal" };
   }
 
   try {
@@ -127,7 +107,6 @@ export async function getAdminDatabaseStatus(): Promise<{
         const data = JSON.parse(text);
         return {
           d1Configured: Boolean(data.d1Configured),
-          supabaseConfigured: Boolean(data.supabaseConfigured),
           activeProvider: data.activeProvider || "Penyimpanan Lokal"
         };
       } catch {
@@ -138,38 +117,7 @@ export async function getAdminDatabaseStatus(): Promise<{
     // fallback
   }
 
-  return { d1Configured: false, supabaseConfigured: false, activeProvider: "Penyimpanan Lokal" };
-}
-
-export async function migrateSupabaseToD1(): Promise<{
-  success: boolean;
-  count?: number;
-  message: string;
-}> {
-  const token = sessionStorage.getItem(STORAGE_KEYS.ADMIN_TOKEN);
-  if (!token) {
-    return { success: false, message: "Token admin tidak ditemukan. Silakan login kembali." };
-  }
-
-  try {
-    const res = await fetch("/api/admin?action=migrate-from-supabase", {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const text = await res.text();
-    let data: any = {};
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { success: false, error: text || `HTTP ${res.status}` };
-    }
-    return {
-      success: Boolean(data.success),
-      count: data.count,
-      message: data.message || data.error || "Proses migrasi selesai."
-    };
-  } catch (err: any) {
-    return { success: false, message: err?.message || "Gagal menghubungi server migrasi." };
-  }
+  return { d1Configured: false, activeProvider: "Penyimpanan Lokal" };
 }
 
 export async function getAdminSubmissions(): Promise<{
@@ -185,47 +133,60 @@ export async function getAdminSubmissions(): Promise<{
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      if (res.ok) {
-        const text = await res.text();
-        let body: any = {};
-        try {
-          body = JSON.parse(text);
-        } catch {
-          body = {};
-        }
-
-        if (body.success && Array.isArray(body.data)) {
-          const mapped: CaseEvaluationSubmission[] = body.data.map((row: any) => ({
-            id: row.id,
-            caseId: row.case_id,
-            reviewerName: row.reviewer_name,
-            reviewerRole: row.reviewer_role,
-            version: CURRENT_CASE_VERSION,
-            metrics: {
-              AV: row.av,
-              AC: row.ac,
-              PR: row.pr,
-              UI: row.ui,
-              S: row.s,
-              C: row.c,
-              I: row.i,
-              A: row.a
-            },
-            baseScore: Number(row.base_score),
-            severity: row.severity,
-            vectorString: row.vector_string,
-            justification: row.justification || "",
-            submittedAt: row.submitted_at
-          }));
-          return { data: mapped, fromCloud: true, provider: body.provider };
-        }
+      const text = await res.text();
+      let body: any = {};
+      try {
+        body = JSON.parse(text);
+      } catch {
+        body = {};
       }
+
+      if (res.ok && body.success && Array.isArray(body.data)) {
+        const mapped: CaseEvaluationSubmission[] = body.data.map((row: any) => ({
+          id: row.id,
+          caseId: row.case_id,
+          reviewerName: row.reviewer_name,
+          reviewerRole: row.reviewer_role,
+          version: CURRENT_CASE_VERSION,
+          metrics: {
+            AV: row.av,
+            AC: row.ac,
+            PR: row.pr,
+            UI: row.ui,
+            S: row.s,
+            C: row.c,
+            I: row.i,
+            A: row.a
+          },
+          baseScore: Number(row.base_score),
+          severity: row.severity,
+          vectorString: row.vector_string,
+          justification: row.justification || "",
+          submittedAt: row.submitted_at
+        }));
+        return { data: mapped, fromCloud: true, provider: body.provider };
+      }
+
+      // Explicit error handling: do NOT mask D1 failures as empty data!
+      return {
+        data: [],
+        fromCloud: false,
+        error:
+          body.error ||
+          body.message ||
+          `Gagal membaca database Cloudflare D1 (HTTP ${res.status}).`
+      };
     } catch (e: any) {
       console.warn("Could not fetch submissions from server admin API:", e);
+      return {
+        data: [],
+        fromCloud: false,
+        error: `Gagal terhubung ke database Cloudflare D1: ${e?.message || "Koneksi terputus"}`
+      };
     }
   }
 
-  // Fallback to local submissions if API is unavailable or offline
+  // Fallback to local submissions if unauthenticated or offline
   return { data: getLocalSubmissions(), fromCloud: false, provider: "Penyimpanan Lokal" };
 }
 
@@ -402,7 +363,7 @@ export async function saveSubmission(
   // 1. Simpan di perangkat lokal terlebih dahulu (jaminan data tidak hilang)
   saveLocalSubmission(enrichedSub);
 
-  // 2. Kirim ke Server API (Cloudflare D1 atau Supabase)
+  // 2. Kirim ke Server API (Cloudflare D1)
   try {
     const res = await fetch("/api/submissions", {
       method: "POST",
@@ -518,7 +479,7 @@ export async function fetchAndSyncReviewerProgress(reviewerName: string): Promis
   let cloudSubs: CaseEvaluationSubmission[] = [];
   let cloudRole: string | undefined;
 
-  // 2. Query ke Server API (Cloudflare D1 atau Supabase)
+  // 2. Query ke Server API (Cloudflare D1)
   try {
     const res = await fetch(
       `/api/submissions?reviewerName=${encodeURIComponent(cleanName)}`

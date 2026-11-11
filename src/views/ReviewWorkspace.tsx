@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import type {
   TestCaseDossier,
   ReviewerProfile,
@@ -30,6 +30,7 @@ interface ReviewWorkspaceProps {
   onFinishAllCases: () => void;
   onRefreshCompleted: () => void;
   onOpenGuide: () => void;
+  onDirtyChange?: (isDirty: boolean) => void;
 }
 
 const EMPTY_METRICS: CVSSv31Metrics = {
@@ -50,7 +51,8 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
   onCaseChange,
   onFinishAllCases,
   onRefreshCompleted,
-  onOpenGuide
+  onOpenGuide,
+  onDirtyChange
 }) => {
   const currentCase = cases[currentCaseIndex];
 
@@ -73,6 +75,21 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
     message: string;
     canProceedAnyway?: boolean;
   } | null>(null);
+
+  // Deteksi perubahan yang belum disimpan (form dirty state)
+  const isFormDirty = useMemo(() => {
+    const metricKeys: (keyof CVSSv31Metrics)[] = ["AV", "AC", "PR", "UI", "S", "C", "I", "A"];
+    const hasMetricChanged = metricKeys.some(
+      k => metrics[k] !== (existingSubmission ? existingSubmission.metrics[k] : null)
+    );
+    const hasJustificationChanged =
+      justification.trim() !== (existingSubmission?.justification || "").trim();
+    return hasMetricChanged || hasJustificationChanged;
+  }, [metrics, justification, existingSubmission]);
+
+  useEffect(() => {
+    onDirtyChange?.(isFormDirty);
+  }, [isFormDirty, onDirtyChange]);
 
   const calculationResult = calculateCVSSv31(metrics);
   const isJustificationFilled = justification.trim().length > 0;
@@ -122,6 +139,7 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
     onRefreshCompleted();
 
     if (res.cloudSynced) {
+      onDirtyChange?.(false);
       setSaveStatus({
         type: "success",
         message: "Penilaian berhasil dikirim dan tersimpan di server."
@@ -144,11 +162,23 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
   };
 
   const handleProceedManually = () => {
+    onDirtyChange?.(false);
     if (currentCaseIndex < cases.length - 1) {
       onCaseChange(currentCaseIndex + 1);
     } else {
       onFinishAllCases();
     }
+  };
+
+  const handleNavPrev = () => {
+    if (isFormDirty) {
+      const confirmLeave = window.confirm(
+        "Perubahan penilaian pada kasus ini belum disimpan. Apakah Anda yakin ingin berpindah kasus? Perubahan yang belum disimpan akan hilang."
+      );
+      if (!confirmLeave) return;
+    }
+    onDirtyChange?.(false);
+    onCaseChange(currentCaseIndex - 1);
   };
 
   return (
@@ -254,7 +284,7 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
               <button
                 type="button"
                 className="btn-nav-prev"
-                onClick={() => onCaseChange(currentCaseIndex - 1)}
+                onClick={handleNavPrev}
                 disabled={currentCaseIndex === 0}
               >
                 <ChevronLeft size={16} />

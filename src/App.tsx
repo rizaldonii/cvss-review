@@ -21,6 +21,19 @@ export const App: React.FC = () => {
   const [currentCaseIndex, setCurrentCaseIndex] = useState(0);
   const [isFinished, setIsFinished] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const [isFormDirty, setIsFormDirty] = useState(false);
+
+  // Peringatan jika tab ditutup / refresh saat ada perubahan form yang belum disimpan
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isFormDirty) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isFormDirty]);
   const [completedCaseIds, setCompletedCaseIds] = useState<string[]>(() => {
     const saved = getReviewerProfile();
     if (!saved) return [];
@@ -90,22 +103,52 @@ export const App: React.FC = () => {
   };
 
   const handleLogout = () => {
-    if (window.confirm("Apakah Anda yakin ingin keluar atau mengganti nama penilai?")) {
-      clearReviewerProfile();
-      setReviewer(null);
-      setIsFinished(false);
-      setCurrentCaseIndex(0);
+    if (isFormDirty) {
+      const confirmLeave = window.confirm(
+        "Perubahan penilaian pada kasus ini belum disimpan. Apakah Anda yakin ingin keluar? Perubahan yang belum disimpan akan hilang."
+      );
+      if (!confirmLeave) return;
+    } else if (!window.confirm("Apakah Anda yakin ingin keluar atau mengganti nama penilai?")) {
+      return;
     }
+
+    clearReviewerProfile();
+    setReviewer(null);
+    setIsFinished(false);
+    setCurrentCaseIndex(0);
+    setIsFormDirty(false);
   };
 
   const handleCaseChange = (index: number) => {
+    if (index === currentCaseIndex) return;
+
+    if (isFormDirty) {
+      const confirmLeave = window.confirm(
+        "Perubahan penilaian pada kasus ini belum disimpan. Apakah Anda yakin ingin berpindah kasus? Perubahan yang belum disimpan akan hilang."
+      );
+      if (!confirmLeave) return;
+    }
+
     if (index >= 0 && index < SANITIZED_TEST_CASES.length) {
       setCurrentCaseIndex(index);
       setIsFinished(false);
+      setIsFormDirty(false);
     }
   };
 
+  const handleOpenAdmin = () => {
+    if (isFormDirty) {
+      const confirmLeave = window.confirm(
+        "Perubahan penilaian pada kasus ini belum disimpan. Apakah Anda yakin ingin membuka halaman rekap admin? Perubahan yang belum disimpan akan hilang."
+      );
+      if (!confirmLeave) return;
+    }
+    setIsFormDirty(false);
+    navigateTo("/admin");
+  };
+
   const handleFinishAllCases = () => {
+    setIsFormDirty(false);
     setIsFinished(true);
   };
 
@@ -127,7 +170,7 @@ export const App: React.FC = () => {
       <Navbar
         reviewer={reviewer}
         onLogout={handleLogout}
-        onOpenAdmin={() => navigateTo("/admin")}
+        onOpenAdmin={handleOpenAdmin}
         onOpenGuide={() => setIsGuideOpen(true)}
         currentCaseIndex={currentCaseIndex}
         totalCases={SANITIZED_TEST_CASES.length}
@@ -161,6 +204,7 @@ export const App: React.FC = () => {
             onFinishAllCases={handleFinishAllCases}
             onRefreshCompleted={() => refreshCompletedCases()}
             onOpenGuide={() => setIsGuideOpen(true)}
+            onDirtyChange={setIsFormDirty}
           />
         )}
       </main>

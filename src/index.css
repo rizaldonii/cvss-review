@@ -2560,17 +2560,28 @@ code, pre {
   color: var(--primary-blue);
 }
 
+/* Table Responsive Utility */
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  background: #FFFFFF;
+  border-radius: 8px;
+}
+
 /* Comparison Table */
 .comparison-table-wrapper {
   background: #FFFFFF;
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   box-shadow: var(--shadow-sm);
 }
 
 .comparison-table {
   width: 100%;
+  min-width: 820px;
   border-collapse: collapse;
   font-size: 0.82rem;
 }
@@ -2697,9 +2708,60 @@ code, pre {
 /* Raw Data Table */
 .raw-data-table {
   width: 100%;
+  min-width: 900px;
   border-collapse: collapse;
   font-size: 0.8rem;
   background: #FFFFFF;
+}
+
+/* Admin Loading and Error Feedback */
+.admin-loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3.5rem 1.5rem;
+  background: #FFFFFF;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  gap: 0.85rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.admin-loading-text {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.admin-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.9rem 1.1rem;
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-radius: 8px;
+  color: #DC2626;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.btn-retry-admin {
+  background: #FFFFFF;
+  border: 1px solid #FECACA;
+  color: #DC2626;
+  padding: 0.35rem 0.75rem;
+  border-radius: 5px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-retry-admin:hover {
+  background: #DC2626;
+  color: #FFFFFF;
 }
 
 .raw-data-table th,
