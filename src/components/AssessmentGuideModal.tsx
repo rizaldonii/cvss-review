@@ -107,10 +107,10 @@ export const AssessmentGuideModal: React.FC<AssessmentGuideModalProps> = ({
             </p>
             <ul className="guide-bullet-list">
               <li>
-                <strong>Vektor &amp; Kompleksitas Serangan (AV &amp; AC):</strong> Apakah serangan dapat dipicu dari jarak jauh (Network) atau mensyaratkan akses lokal perangkat (Local), serta ada tidaknya kondisi di luar kendali penyerang.
+                <strong>Vektor &amp; Kompleksitas Serangan (AV &amp; AC):</strong> Apakah serangan dapat dipicu dari jarak jauh melintasi jaringan (Network) atau mensyaratkan kapabilitas lokal perangkat (Local), serta ada tidaknya kondisi di luar kendali penyerang.
               </li>
               <li>
-                <strong>Hak Akses &amp; Interaksi Pengguna (PR &amp; UI):</strong> Apakah penyerang harus terotentikasi sebelum melancarkan serangan, dan apakah dibutuhkan tindakan aktif dari korban selain penyerang.
+                <strong>Hak Akses &amp; Interaksi Pengguna (PR &amp; UI):</strong> Apakah penyerang harus memiliki akun atau hak otentikasi awal sebelum serangan (PR), dan apakah dibutuhkan tindakan aktif tertentu dari pengguna selain penyerang untuk memicu kerentanan (UI, yang tidak selalu berupa rekayasa sosial).
               </li>
               <li>
                 <strong>Ruang Lingkup (Scope):</strong> Apakah dampak eksploitasi melanggar batas otoritas keamanan yang berbeda (Changed) atau tetap berada dalam otoritas komponen rentan (Unchanged).

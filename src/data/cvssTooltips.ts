@@ -11,9 +11,9 @@ export const CVSS_METRIC_DEFINITIONS: Record<keyof CVSSv31Metrics, MetricDefinit
         code: "N",
         label: "Network",
         badge: "N",
-        guidanceText: "Komponen rentan terikat pada tumpukan jaringan dan dapat dieksploitasi melintasi batas perutean (layer 3 ke atas), termasuk internet publik, tanpa mensyaratkan akses fisik, akun lokal, atau kedekatan topologi jaringan.",
-        mobileEvaluationContext: "Contoh ilustratif: kerentanan dieksploitasi dari jarak jauh melalui koneksi jaringan publik tanpa batasan topologi jaringan bersama.",
-        firstOfficialText: "Komponen rentan terikat pada tumpukan jaringan dan dapat dieksploitasi melintasi batas perutean (layer 3 ke atas), termasuk internet publik, tanpa mensyaratkan akses fisik, akun lokal, atau kedekatan topologi jaringan."
+        guidanceText: "Komponen rentan terikat pada tumpukan jaringan dan dapat dieksploitasi melintasi batas perutean (layer 3 ke atas), termasuk internet publik, tanpa mensyaratkan akses fisik, kapabilitas eksekusi lokal pada sistem target, atau kedekatan topologi jaringan bersama.",
+        mobileEvaluationContext: "Contoh ilustratif: kerentanan dapat dipicu dari jarak jauh melalui koneksi jaringan publik atau internet tanpa batasan kedekatan jaringan fisik maupun logis.",
+        firstOfficialText: "Komponen rentan terikat pada tumpukan jaringan dan dapat dieksploitasi melintasi batas perutean (layer 3 ke atas), termasuk internet publik, tanpa mensyaratkan akses fisik, kapabilitas eksekusi lokal pada sistem target, atau kedekatan topologi jaringan bersama."
       },
       {
         code: "A",
@@ -115,9 +115,9 @@ export const CVSS_METRIC_DEFINITIONS: Record<keyof CVSSv31Metrics, MetricDefinit
         code: "R",
         label: "Required",
         badge: "R",
-        guidanceText: "Keberhasilan eksploitasi mensyaratkan pengguna sah (selain penyerang) untuk melakukan tindakan aktif tertentu yang memicu kerentanan (misalnya membuka tautan jebakan, mengunduh berkas berbahaya, atau mengeksekusi aksi tertentu).",
-        mobileEvaluationContext: "Contoh ilustratif: pengguna harus diperdaya (rekayasa sosial) untuk memicu payload. Penggunaan rutin aplikasi secara normal oleh korban tidak otomatis berarti UI bernilai Required, kecuali serangan secara spesifik membutuhkan tindakan aktif dari korban untuk memicu kerentanan.",
-        firstOfficialText: "Keberhasilan eksploitasi mensyaratkan pengguna sah (selain penyerang) untuk melakukan tindakan aktif tertentu yang memicu kerentanan."
+        guidanceText: "Keberhasilan eksploitasi mensyaratkan pengguna selain penyerang untuk melakukan tindakan aktif tertentu yang memicu atau memfasilitasi eksploitasi kerentanan (misalnya membuka berkas tertentu, mengunjungi tautan/URI, atau menyetujui dialog izin/tindakan). Tindakan ini tidak selalu berupa rekayasa sosial, melainkan tindakan pengguna apa pun yang menjadi prasyarat terpicunya kerentanan.",
+        mobileEvaluationContext: "Contoh ilustratif: serangan membutuhkan tindakan aktif pengguna untuk memicu eksploitasi (misal mengimpor berkas konfigurasi, mengklik tautan intent, atau menyetujui dialog aksi). Penggunaan pasif aplikasi secara normal tidak otomatis berarti UI bernilai Required, kecuali tindakan spesifik tersebut memang menjadi prasyarat mutlak berjalannya eksploitasi.",
+        firstOfficialText: "Keberhasilan eksploitasi mensyaratkan pengguna selain penyerang untuk melakukan tindakan aktif tertentu yang memicu atau memfasilitasi eksploitasi kerentanan."
       }
     ]
   },

@@ -229,55 +229,100 @@ export async function getAdminSubmissions(): Promise<{
   return { data: getLocalSubmissions(), fromCloud: false, provider: "Penyimpanan Lokal" };
 }
 
-export async function deleteAdminSubmission(id: string): Promise<boolean> {
-  // Delete from local storage
-  const local = getRawStoredSubmissions();
-  const filtered = local.filter(s => s.id !== id);
-  localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(filtered));
-
+export async function deleteAdminSubmission(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
   const token = sessionStorage.getItem(STORAGE_KEYS.ADMIN_TOKEN);
-  if (token) {
-    try {
-      await fetch("/api/admin?action=delete", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ id })
-      });
-    } catch (e) {
-      console.warn("Error calling delete on server admin API:", e);
-    }
+  if (!token) {
+    return { success: false, error: "Sesi admin tidak ditemukan. Silakan login kembali." };
   }
 
-  return true;
+  try {
+    const res = await fetch("/api/admin?action=delete", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ id })
+    });
+
+    const text = await res.text();
+    let data: any = {};
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { success: false, error: text || `HTTP ${res.status}` };
+    }
+
+    if (!res.ok || !data.success) {
+      return {
+        success: false,
+        error: data.error || data.message || `Gagal menghapus data di database server (HTTP ${res.status}).`
+      };
+    }
+
+    // Hanya hapus dari localStorage jika server mengonfirmasi sukses
+    const local = getRawStoredSubmissions();
+    const filtered = local.filter(s => s.id !== id);
+    localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(filtered));
+
+    return { success: true };
+  } catch (e: any) {
+    return {
+      success: false,
+      error: e?.message || "Gagal menghubungi server untuk menghapus data."
+    };
+  }
 }
 
-export async function deleteAdminReviewerAll(reviewerName: string): Promise<boolean> {
-  const local = getRawStoredSubmissions();
-  const filtered = local.filter(
-    s => s.reviewerName.trim().toLowerCase() !== reviewerName.trim().toLowerCase()
-  );
-  localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(filtered));
-
+export async function deleteAdminReviewerAll(
+  reviewerName: string
+): Promise<{ success: boolean; error?: string }> {
   const token = sessionStorage.getItem(STORAGE_KEYS.ADMIN_TOKEN);
-  if (token) {
-    try {
-      await fetch("/api/admin?action=delete", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ reviewerName })
-      });
-    } catch (e) {
-      console.warn("Error calling delete reviewer on server admin API:", e);
-    }
+  if (!token) {
+    return { success: false, error: "Sesi admin tidak ditemukan. Silakan login kembali." };
   }
 
-  return true;
+  try {
+    const res = await fetch("/api/admin?action=delete", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ reviewerName })
+    });
+
+    const text = await res.text();
+    let data: any = {};
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { success: false, error: text || `HTTP ${res.status}` };
+    }
+
+    if (!res.ok || !data.success) {
+      return {
+        success: false,
+        error: data.error || data.message || `Gagal menghapus evaluator di database server (HTTP ${res.status}).`
+      };
+    }
+
+    // Hanya hapus dari localStorage jika server mengonfirmasi sukses
+    const local = getRawStoredSubmissions();
+    const filtered = local.filter(
+      s => s.reviewerName.trim().toLowerCase() !== reviewerName.trim().toLowerCase()
+    );
+    localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(filtered));
+
+    return { success: true };
+  } catch (e: any) {
+    return {
+      success: false,
+      error: e?.message || "Gagal menghubungi server untuk menghapus data evaluator."
+    };
+  }
 }
 
 // ==================== Reviewer Profile ====================
@@ -399,16 +444,47 @@ export async function saveSubmission(
 }
 
 export async function checkReviewerCloudStatus(reviewerName: string): Promise<string[]> {
+  const cleanName = reviewerName.trim();
+  if (!cleanName) return [];
+
+  const localSubs = getLocalSubmissions().filter(
+    s => s.reviewerName.trim().toLowerCase() === cleanName.toLowerCase()
+  );
+
   try {
     const res = await fetch(
-      `/api/submissions?reviewerName=${encodeURIComponent(reviewerName.trim())}`
+      `/api/submissions?reviewerName=${encodeURIComponent(cleanName)}`
     );
     if (res.ok) {
       const text = await res.text();
       try {
         const data = JSON.parse(text);
-        if (data.success && Array.isArray(data.caseIds)) {
-          return data.caseIds;
+        if (data.success && Array.isArray(data.submissions)) {
+          const cloudSubs: CaseEvaluationSubmission[] = data.submissions;
+          const syncedCaseIds: string[] = [];
+
+          for (const localSub of localSubs) {
+            const matchingCloud = cloudSubs.find(cs => cs.caseId === localSub.caseId);
+            if (!matchingCloud) continue;
+
+            // Pastikan data di cloud benar-benar mencerminkan versi penilaian terakhir
+            const isVectorMatch = matchingCloud.vectorString === localSub.vectorString;
+            const isScoreMatch =
+              Math.abs(Number(matchingCloud.baseScore) - Number(localSub.baseScore)) < 0.05;
+            const isJustificationMatch =
+              (matchingCloud.justification || "").trim() === (localSub.justification || "").trim();
+
+            const localTime = Date.parse(localSub.submittedAt || "");
+            const cloudTime = Date.parse(matchingCloud.submittedAt || "");
+            const localIsNewer =
+              !isNaN(localTime) && !isNaN(cloudTime) && localTime > cloudTime;
+
+            if (isVectorMatch && isScoreMatch && isJustificationMatch && !localIsNewer) {
+              syncedCaseIds.push(localSub.caseId);
+            }
+          }
+
+          return syncedCaseIds;
         }
       } catch {
         // fallback
@@ -422,7 +498,7 @@ export async function checkReviewerCloudStatus(reviewerName: string): Promise<st
 
 /**
  * Mengambil seluruh progress evaluasi yang tersimpan di cloud untuk nama penilai tertentu,
- * dan menyelaraskannya ke penyimpanan lokal agar penilai dapat melanjutkan penilaian.
+ * dan menyelaraskannya ke penyimpanan lokal tanpa menimpa perubahan lokal yang lebih baru.
  */
 export async function fetchAndSyncReviewerProgress(reviewerName: string): Promise<{
   submissions: CaseEvaluationSubmission[];
@@ -460,9 +536,22 @@ export async function fetchAndSyncReviewerProgress(reviewerName: string): Promis
         cloudSubs = data.submissions;
         cloudRole = data.reviewerRole;
 
-        // Sinkronisasikan setiap cloud submission ke localStorage
-        for (const sub of cloudSubs) {
-          saveLocalSubmission(sub);
+        // Sinkronisasikan setiap cloud submission ke localStorage tanpa menimpa perubahan lokal yang lebih baru
+        for (const cloudSub of cloudSubs) {
+          const existingLocal = localSubs.find(s => s.caseId === cloudSub.caseId);
+          if (!existingLocal) {
+            // Jika belum ada di lokal, simpan data dari cloud
+            saveLocalSubmission(cloudSub);
+          } else {
+            const localTime = Date.parse(existingLocal.submittedAt || "");
+            const cloudTime = Date.parse(cloudSub.submittedAt || "");
+
+            // Jangan menimpa jika revisi lokal lebih baru dari cloud
+            const localIsNewer = !isNaN(localTime) && !isNaN(cloudTime) && localTime > cloudTime;
+            if (!localIsNewer) {
+              saveLocalSubmission(cloudSub);
+            }
+          }
         }
       }
     }
@@ -485,6 +574,22 @@ export async function fetchAndSyncReviewerProgress(reviewerName: string): Promis
 }
 
 // ==================== Export Helpers ====================
+
+export function escapeLatex(text: string): string {
+  if (!text) return "";
+  return text.replace(/[\\&%$#_{}~^]/g, char => {
+    switch (char) {
+      case "\\":
+        return "\\textbackslash{}";
+      case "~":
+        return "\\textasciitilde{}";
+      case "^":
+        return "\\textasciicircum{}";
+      default:
+        return `\\${char}`;
+    }
+  });
+}
 
 export function exportToCsv(submissions: CaseEvaluationSubmission[]): string {
   const headers = [
@@ -534,7 +639,7 @@ export function exportToLatex(submissions: CaseEvaluationSubmission[]): string {
 \\caption{Rekapitulasi Penilaian CVSS v3.1 oleh Evaluator (Empat Kelompok Kerentanan)}
 \\label{tab:rekap-cvss-evaluator}
 \\resizebox{\\textwidth}{!}{%
-\\begin{tabular}{|c|l|l|c|c|l|}
+\\begin{tabular}{|c|l|l|c|c|}
 \\hline
 \\textbf{Case ID} & \\textbf{Penilai} & \\textbf{Vector String CVSS v3.1} & \\textbf{Skor} & \\textbf{Keparahan} \\\\ \\hline
 `;
@@ -542,10 +647,10 @@ export function exportToLatex(submissions: CaseEvaluationSubmission[]): string {
   VALID_CASE_IDS.forEach(cId => {
     const caseSubs = submissions.filter(s => s.caseId === cId);
     if (caseSubs.length === 0) {
-      latex += `${cId} & - & Belum dinilai & - & - \\\\ \\hline\n`;
+      latex += `${escapeLatex(cId)} & - & Belum dinilai & - & - \\\\ \\hline\n`;
     } else {
       caseSubs.forEach(s => {
-        latex += `${cId} & ${s.reviewerName} & \\texttt{${s.vectorString}} & ${s.baseScore.toFixed(1)} & ${s.severity} \\\\ \n`;
+        latex += `${escapeLatex(cId)} & ${escapeLatex(s.reviewerName)} & \\texttt{${escapeLatex(s.vectorString)}} & ${s.baseScore.toFixed(1)} & ${escapeLatex(s.severity)} \\\\ \n`;
       });
       latex += `\\hline\n`;
     }

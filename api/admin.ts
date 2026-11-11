@@ -130,36 +130,40 @@ async function fetchAllV2Submissions(): Promise<{ data: any[]; provider: string 
 }
 
 async function deleteSubmissionsFromDb(filter: { id?: string; reviewerName?: string }): Promise<void> {
+  let executedAtLeastOne = false;
+
+  // 1. Penghapusan pada Cloudflare D1 harus berhasil jika D1 terkonfigurasi
   if (isD1Configured()) {
-    try {
-      if (filter.id) {
-        await queryD1("DELETE FROM cvss_reviews WHERE id = ?;", [filter.id]);
-      } else if (filter.reviewerName) {
-        await queryD1(
-          "DELETE FROM cvss_reviews WHERE LOWER(reviewer_name) = LOWER(?) AND (version = 'v2' OR id LIKE 'v2_%');",
-          [filter.reviewerName.trim()]
-        );
-      }
-    } catch (e) {
-      console.warn("Failed delete from D1:", e);
+    if (filter.id) {
+      await queryD1("DELETE FROM cvss_reviews WHERE id = ?;", [filter.id]);
+    } else if (filter.reviewerName) {
+      await queryD1(
+        "DELETE FROM cvss_reviews WHERE LOWER(reviewer_name) = LOWER(?) AND (version = 'v2' OR id LIKE 'v2_%');",
+        [filter.reviewerName.trim()]
+      );
     }
+    executedAtLeastOne = true;
   }
 
+  // 2. Penghapusan pada Supabase jika terkonfigurasi
   const supabase = getSupabaseClient();
   if (supabase) {
-    try {
-      if (filter.id) {
-        await supabase.from("cvss_reviews").delete().eq("id", filter.id);
-      } else if (filter.reviewerName) {
-        await supabase
-          .from("cvss_reviews")
-          .delete()
-          .ilike("reviewer_name", filter.reviewerName.trim())
-          .or("version.eq.v2,id.like.v2_%");
-      }
-    } catch (e) {
-      console.warn("Failed delete from Supabase:", e);
+    if (filter.id) {
+      const { error } = await supabase.from("cvss_reviews").delete().eq("id", filter.id);
+      if (error) throw error;
+    } else if (filter.reviewerName) {
+      const { error } = await supabase
+        .from("cvss_reviews")
+        .delete()
+        .ilike("reviewer_name", filter.reviewerName.trim())
+        .or("version.eq.v2,id.like.v2_%");
+      if (error) throw error;
     }
+    executedAtLeastOne = true;
+  }
+
+  if (!executedAtLeastOne) {
+    throw new Error("Tidak ada database cloud yang aktif untuk memproses penghapusan data.");
   }
 }
 
@@ -216,7 +220,12 @@ function recordSuccess(ip: string) {
 }
 
 function getSecretKey(): string {
-  const secret = process.env.ADMIN_SESSION_SECRET || process.env.ADMIN_PASSWORD || "cvss_default_secret_key_2026";
+  const secret = process.env.ADMIN_SESSION_SECRET || process.env.ADMIN_PASSWORD;
+  if (!secret) {
+    throw new Error(
+      "ADMIN_PASSWORD atau ADMIN_SESSION_SECRET belum disetel pada Environment Variables server."
+    );
+  }
   return crypto.createHash("sha256").update(secret).digest("hex");
 }
 

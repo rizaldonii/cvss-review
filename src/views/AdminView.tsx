@@ -194,8 +194,12 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
 
   const handleDeleteSubmission = async (id: string, reviewerName: string, caseId: string) => {
     if (window.confirm(`Hapus penilaian kasus ${caseId} dari "${reviewerName}"?`)) {
-      await deleteAdminSubmission(id);
-      await loadData();
+      const res = await deleteAdminSubmission(id);
+      if (res.success) {
+        await loadData();
+      } else {
+        alert(res.error || "Gagal menghapus penilaian dari server database.");
+      }
     }
   };
 
@@ -206,9 +210,13 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
         `Hapus seluruh evaluasi dari evaluator "${reviewerName}"? Tindakan ini tidak dapat dibatalkan.`
       )
     ) {
-      await deleteAdminReviewerAll(reviewerName);
-      setSelectedReviewers(prev => prev.map(r => (r === reviewerName ? "" : r)));
-      await loadData();
+      const res = await deleteAdminReviewerAll(reviewerName);
+      if (res.success) {
+        setSelectedReviewers(prev => prev.map(r => (r === reviewerName ? "" : r)));
+        await loadData();
+      } else {
+        alert(res.error || "Gagal menghapus data evaluator dari server database.");
+      }
     }
   };
 
