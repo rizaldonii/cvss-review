@@ -299,7 +299,7 @@ export default async function handler(req: any, res: any) {
   const isAuthorized = verifySessionToken(token);
 
   // 2. ACTION: VERIFY-SESSION
-  if (action === "verify-session") {
+  if (action === "verify-session" || action === "verify") {
     return res.status(200).json({
       success: true,
       valid: isAuthorized

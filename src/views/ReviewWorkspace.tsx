@@ -170,17 +170,6 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
     }
   };
 
-  const handleNavPrev = () => {
-    if (isFormDirty) {
-      const confirmLeave = window.confirm(
-        "Perubahan penilaian pada kasus ini belum disimpan. Apakah Anda yakin ingin berpindah kasus? Perubahan yang belum disimpan akan hilang."
-      );
-      if (!confirmLeave) return;
-    }
-    onDirtyChange?.(false);
-    onCaseChange(currentCaseIndex - 1);
-  };
-
   return (
     <div className="workspace-container">
       <div className="workspace-split-layout">
@@ -284,7 +273,7 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
               <button
                 type="button"
                 className="btn-nav-prev"
-                onClick={handleNavPrev}
+                onClick={() => onCaseChange(currentCaseIndex - 1)}
                 disabled={currentCaseIndex === 0}
               >
                 <ChevronLeft size={16} />

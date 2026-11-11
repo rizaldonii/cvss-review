@@ -66,25 +66,36 @@ export const AdminView: React.FC<AdminViewProps> = ({ cases, onClose }) => {
 
       if (subRes.error) {
         setLoadError(subRes.error);
+        // Pertahankan data yang sebelumnya berhasil dimuat, jangan hapus state
+      } else {
+        setSubmissions(subRes.data);
+        setIsCloud(subRes.fromCloud);
+        if (subRes.provider) {
+          setDbProvider(subRes.provider);
+        }
       }
 
-      setSubmissions(subRes.data);
-      setIsCloud(subRes.fromCloud);
-      setDbProvider(subRes.provider || statRes.activeProvider || "Penyimpanan Lokal");
+      if (statRes?.activeProvider) {
+        setDbProvider(prev => subRes.provider || statRes.activeProvider || prev || "Cloudflare D1");
+      }
 
-      // Populate comparison slots strictly from actual submissions
-      const unique = Array.from(new Set(subRes.data.map(s => s.reviewerName)));
-      setSelectedReviewers(prev => {
-        const updated = [...prev];
-        while (updated.length < 3) {
-          updated.push("");
-        }
-        for (let i = 0; i < 3; i++) {
-          if (!updated[i] && unique[i] && !updated.includes(unique[i])) {
-            updated[i] = unique[i];
+      // Populate comparison slots strictly from actual submissions (pertahankan jika ada error)
+      setSubmissions(currentSubmissions => {
+        const activeData = subRes.error ? currentSubmissions : subRes.data;
+        const unique = Array.from(new Set(activeData.map(s => s.reviewerName)));
+        setSelectedReviewers(prev => {
+          const updated = [...prev];
+          while (updated.length < 3) {
+            updated.push("");
           }
-        }
-        return updated;
+          for (let i = 0; i < 3; i++) {
+            if (!updated[i] && unique[i] && !updated.includes(unique[i])) {
+              updated[i] = unique[i];
+            }
+          }
+          return updated;
+        });
+        return subRes.error ? currentSubmissions : subRes.data;
       });
     } catch (e: any) {
       console.warn("Error loading admin data:", e);

@@ -61,7 +61,7 @@ export async function checkAdminToken(): Promise<boolean> {
   if (!token) return false;
 
   try {
-    const res = await fetch("/api/admin?action=verify", {
+    const res = await fetch("/api/admin?action=verify-session", {
       headers: { Authorization: `Bearer ${token}` }
     });
 

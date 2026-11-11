@@ -3041,3 +3041,18 @@ code, pre {
     padding: 0.65rem 1rem;
   }
 }
+
+/* Spinner Animation Utility */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
