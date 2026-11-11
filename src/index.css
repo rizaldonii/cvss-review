@@ -1379,6 +1379,20 @@ code, pre {
   gap: 0.45rem;
 }
 
+.tooltip-summary-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.tooltip-summary-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--primary-blue);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
 .tooltip-guidance-text {
   font-size: 0.78rem;
   color: var(--text-main);

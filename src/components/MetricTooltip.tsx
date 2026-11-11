@@ -124,7 +124,10 @@ export const MetricTooltip: React.FC<MetricTooltipProps> = ({
         </div>
 
         <div className="tooltip-body-content">
-          <p className="tooltip-guidance-text">{option.guidanceText}</p>
+          <div className="tooltip-summary-box">
+            <span className="tooltip-summary-label">Ringkasan berdasarkan FIRST CVSS v3.1:</span>
+            <p className="tooltip-guidance-text">{option.guidanceText}</p>
+          </div>
           <div className="tooltip-context-box">
             <span className="tooltip-context-label">Konteks Evaluasi:</span>
             <p className="tooltip-context-text">{option.mobileEvaluationContext}</p>

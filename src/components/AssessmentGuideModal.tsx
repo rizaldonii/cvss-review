@@ -53,7 +53,13 @@ export const AssessmentGuideModal: React.FC<AssessmentGuideModalProps> = ({
                 <strong>Pahami Fakta Teknis di Panel Kiri:</strong> Evaluasi langkah reproduksi (PoC), cuplikan keluaran teks/log, serta screenshot pengujian sebelum menentukan nilai metrik.
               </li>
               <li>
+                <strong>Pemisahan Fakta vs Konsekuensi Potensial:</strong> Bedakan fakta teknis hasil pengujian, prasyarat yang dibutuhkan untuk eksploitasi, dan konsekuensi potensial yang dapat timbul.
+              </li>
+              <li>
                 <strong>Konsekuensi Wajar Sesuai FIRST:</strong> Penilaian tidak boleh mengarang dampak yang tidak berdasar, tetapi dapat mempertimbangkan konsekuensi eksploitasi yang wajar, didukung bukti teknis, dan sesuai dengan panduan resmi FIRST CVSS v3.1. Sesuai prinsip FIRST, tidak semua konsekuensi harus dibuktikan melalui eksploitasi aktual yang destruktif, asalkan konsekuensi tersebut merupakan dampak logis yang terbukti potensial.
+              </li>
+              <li>
+                <strong>Konteks Android Bersifat Ilustratif:</strong> Seluruh contoh konteks pengujian mobile disajikan murni sebagai ilustrasi komparatif, <strong>bukan petunjuk untuk mengarahkan pilihan nilai tertentu</strong>. Penilai menentukan nilai metrik secara mandiri dan independen.
               </li>
               <li>
                 <strong>Penanganan Bukti Gabungan (CASE-02 &amp; CASE-04):</strong> Pada kasus kebocoran informasi melalui logging, bukti DAST (runtime logcat) dan SAST (residu string biner) disajikan bersama sebagai bukti pendukung untuk <strong>satu penilaian CVSS terintegrasi</strong>.
@@ -64,7 +70,7 @@ export const AssessmentGuideModal: React.FC<AssessmentGuideModalProps> = ({
           {/* Section 3: 8 Metrik Dasar CVSS v3.1 */}
           <section className="guide-section">
             <h4 className="guide-section-heading">
-              <Info size={16} className="text-accent inline-icon" /> 3. Delapan Metrik Dasar CVSS v3.1 (Spesifikasi FIRST)
+              <Info size={16} className="text-accent inline-icon" /> 3. Delapan Metrik Dasar CVSS v3.1 (Ringkasan berdasarkan FIRST CVSS v3.1)
             </h4>
             <div className="guide-metrics-grid">
               {metricKeys.map(key => {
@@ -81,7 +87,7 @@ export const AssessmentGuideModal: React.FC<AssessmentGuideModalProps> = ({
                         <div key={opt.code} className="guide-opt-row">
                           <span className="guide-opt-code">{opt.badge}: {opt.label}</span>
                           <span className="guide-opt-ctx">{opt.guidanceText}</span>
-                          <span className="guide-opt-mobile-note"><em>Konteks Mobile:</em> {opt.mobileEvaluationContext}</span>
+                          <span className="guide-opt-mobile-note"><em>Konteks Evaluasi:</em> {opt.mobileEvaluationContext}</span>
                         </div>
                       ))}
                     </div>

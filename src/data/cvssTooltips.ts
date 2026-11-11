@@ -11,33 +11,33 @@ export const CVSS_METRIC_DEFINITIONS: Record<keyof CVSSv31Metrics, MetricDefinit
         code: "N",
         label: "Network",
         badge: "N",
-        guidanceText: "Kerentanan terikat pada tumpukan jaringan (layer 3 ke atas) dan dapat dieksploitasi dari jarak jauh tanpa mensyaratkan penyerang berada pada subnet atau jangkauan radio nirkabel lokal yang sama.",
-        mobileEvaluationContext: "Dapat dieksploitasi melalui jaringan publik atau internet tanpa memerlukan kedekatan fisik atau koneksi pada subnet lokal yang sama.",
-        firstOfficialText: "Kerentanan terikat pada tumpukan jaringan (layer 3 ke atas) dan dapat dieksploitasi dari jarak jauh tanpa mensyaratkan penyerang berada pada subnet atau jangkauan radio nirkabel lokal yang sama."
+        guidanceText: "Komponen rentan terikat pada tumpukan jaringan dan dapat dieksploitasi melintasi batas perutean (layer 3 ke atas), termasuk internet publik, tanpa mensyaratkan akses fisik, akun lokal, atau kedekatan topologi jaringan.",
+        mobileEvaluationContext: "Contoh ilustratif: kerentanan dieksploitasi dari jarak jauh melalui koneksi jaringan publik tanpa batasan topologi jaringan bersama.",
+        firstOfficialText: "Komponen rentan terikat pada tumpukan jaringan dan dapat dieksploitasi melintasi batas perutean (layer 3 ke atas), termasuk internet publik, tanpa mensyaratkan akses fisik, akun lokal, atau kedekatan topologi jaringan."
       },
       {
         code: "A",
         label: "Adjacent",
         badge: "A",
-        guidanceText: "Eksploitasi dibatasi pada tingkat protokol ke topologi jaringan yang berdekatan secara logis atau fisik.",
-        mobileEvaluationContext: "Memerlukan penyerang berada pada domain jaringan bersama (misal: subnet Wi-Fi/LAN lokal yang sama) atau dalam jangkauan protokol nirkabel terbatas (Bluetooth, BLE, NFC).",
-        firstOfficialText: "Eksploitasi dibatasi pada tingkat protokol ke topologi jaringan yang berdekatan secara logis atau fisik."
+        guidanceText: "Eksploitasi dibatasi pada tingkat protokol ke domain jaringan yang berdekatan secara fisik atau logis dengan sistem target.",
+        mobileEvaluationContext: "Contoh ilustratif: serangan Man-in-the-Middle (MitM) pada subnet Wi-Fi/LAN lokal bersama, atau eksploitasi berbasis protokol nirkabel jangkauan terbatas (Bluetooth, BLE, NFC).",
+        firstOfficialText: "Eksploitasi dibatasi pada tingkat protokol ke domain jaringan yang berdekatan secara fisik atau logis dengan sistem target."
       },
       {
         code: "L",
         label: "Local",
         badge: "L",
-        guidanceText: "Komponen rentan tidak terikat pada tumpukan jaringan terbuka. Penyerang memerlukan kapabilitas eksekusi atau pembacaan secara lokal pada perangkat target.",
-        mobileEvaluationContext: "Eksploitasi memerlukan akses lokal pada perangkat (misal: aplikasi lokal lain di perangkat yang sama, interaksi IPC/Intent, konsol shell termasuk ADB, atau pembacaan berkas penyimpanan lokal). Catatan: Local tidak selalu berarti penyerang harus memegang perangkat fisik jika akses lokal dapat dicapai melalui proses lokal lain.",
-        firstOfficialText: "Komponen rentan tidak terikat pada tumpukan jaringan terbuka. Penyerang memerlukan kapabilitas eksekusi atau pembacaan secara lokal pada perangkat target."
+        guidanceText: "Komponen rentan tidak terikat pada tumpukan jaringan terbuka. Penyerang memerlukan kapabilitas lokal (membaca, menulis, atau mengeksekusi) pada sistem target, baik melalui antarmuka konsol/shell lokal, proses atau aplikasi lain yang berjalan di perangkat target, maupun melalui interaksi pengguna lokal yang menjalankan berkas berbahaya.",
+        mobileEvaluationContext: "Contoh ilustratif: eksploitasi melalui aplikasi lokal lain di perangkat yang sama (misal antarmuka IPC/Intent), pembacaan log lokal (logcat), berkas pada penyimpanan lokal, atau sesi shell (termasuk ADB). Local tidak mensyaratkan kontak fisik langsung ke perangkat apabila kapabilitas lokal dapat diperoleh melalui proses lokal lain.",
+        firstOfficialText: "Komponen rentan tidak terikat pada tumpukan jaringan terbuka. Penyerang memerlukan kapabilitas lokal (membaca, menulis, atau mengeksekusi) pada sistem target, baik melalui antarmuka konsol/shell lokal, proses atau aplikasi lain yang berjalan di perangkat target, maupun melalui interaksi pengguna lokal yang menjalankan berkas berbahaya."
       },
       {
         code: "P",
         label: "Physical",
         badge: "P",
-        guidanceText: "Penyerang memerlukan kontak fisik langsung secara manual pada perangkat keras atau antarmuka fisik perangkat.",
-        mobileEvaluationContext: "Memerlukan penyerang memegang atau memanipulasi perangkat keras fisik ponsel secara langsung.",
-        firstOfficialText: "Penyerang memerlukan kontak fisik langsung secara manual pada perangkat keras atau antarmuka fisik perangkat."
+        guidanceText: "Eksploitasi mensyaratkan penyerang melakukan kontak fisik langsung secara manual pada perangkat keras target atau antarmuka fisik perangkat.",
+        mobileEvaluationContext: "Contoh ilustratif: pembongkaran perangkat keras, manipulasi konektor/port fisik perangkat, atau manipulasi sensor secara langsung.",
+        firstOfficialText: "Eksploitasi mensyaratkan penyerang melakukan kontak fisik langsung secara manual pada perangkat keras target atau antarmuka fisik perangkat."
       }
     ]
   },
@@ -51,17 +51,17 @@ export const CVSS_METRIC_DEFINITIONS: Record<keyof CVSSv31Metrics, MetricDefinit
         code: "L",
         label: "Low",
         badge: "L",
-        guidanceText: "Tidak terdapat kondisi akses khusus atau faktor lingkungan di luar kendali penyerang. Eksploitasi dapat diulang dengan keberhasilan yang konsisten dan deterministik.",
-        mobileEvaluationContext: "Eksploitasi bersifat konsisten dan deterministik. Penyerang memegang kendali penuh atas faktor-faktor yang diperlukan untuk keberhasilan eksploitasi.",
-        firstOfficialText: "Tidak terdapat kondisi akses khusus atau faktor lingkungan di luar kendali penyerang. Eksploitasi dapat diulang dengan keberhasilan yang konsisten dan deterministik."
+        guidanceText: "Tidak terdapat kondisi akses khusus atau rintangan di luar kendali penyerang. Serangan dapat dipersiapkan dan diulang dengan tingkat keberhasilan yang konsisten dan deterministik.",
+        mobileEvaluationContext: "Contoh ilustratif: serangan dapat dieksekusi secara terencana tanpa bergantung pada faktor lingkungan acak. Keberadaan konfigurasi rentan tertentu yang sudah aktif pada target tidak otomatis menjadikan AC bernilai High selama eksploitasi dapat diulang secara konsisten.",
+        firstOfficialText: "Tidak terdapat kondisi akses khusus atau rintangan di luar kendali penyerang. Serangan dapat dipersiapkan dan diulang dengan tingkat keberhasilan yang konsisten dan deterministik."
       },
       {
         code: "H",
         label: "High",
         badge: "H",
-        guidanceText: "Keberhasilan eksploitasi bergantung pada kondisi di luar kendali penyerang (misal: harus memenangkan kondisi balapan/race condition, mengumpulkan rahasia acak target, atau bergantung pada konfigurasi sistem target tertentu).",
-        mobileEvaluationContext: "Keberhasilan serangan bergantung pada faktor eksternal di luar kendali penyerang. Catatan: Kebutuhan teknik eksploitasi tertentu tidak serta-merta menjadikan AC bernilai High apabila kondisi lingkungan sepenuhnya dapat dipersiapkan atau dikendalikan penyerang.",
-        firstOfficialText: "Keberhasilan eksploitasi bergantung pada kondisi di luar kendali penyerang (misal: harus memenangkan kondisi balapan/race condition, mengumpulkan rahasia acak target, atau bergantung pada konfigurasi sistem target tertentu)."
+        guidanceText: "Keberhasilan eksploitasi bergantung pada faktor atau kondisi di luar kendali penyerang (misalnya memenangkan kondisi balapan/race condition, mengumpulkan rahasia acak yang tidak dapat dipaksakan, atau bergantung pada anomali lingkungan sistem yang tidak menentu).",
+        mobileEvaluationContext: "Contoh ilustratif: serangan tidak dapat diulang secara konsisten atas kehendak penyerang karena adanya faktor eksternal independen yang tidak dapat dipaksakan. Kebutuhan alat, keahlian khusus, atau konfigurasi permisif pada aplikasi tidak serta-merta menjadikan AC bernilai High jika faktor-faktor pendukung dapat dipenuhi secara deterministik.",
+        firstOfficialText: "Keberhasilan eksploitasi bergantung pada faktor atau kondisi di luar kendali penyerang (misalnya memenangkan kondisi balapan/race condition, mengumpulkan rahasia acak yang tidak dapat dipaksakan, atau bergantung pada anomali lingkungan sistem yang tidak menentu)."
       }
     ]
   },
@@ -76,24 +76,24 @@ export const CVSS_METRIC_DEFINITIONS: Record<keyof CVSSv31Metrics, MetricDefinit
         label: "None",
         badge: "N",
         guidanceText: "Penyerang tidak terotentikasi dan tidak memerlukan hak akses atau izin akun apa pun pada komponen rentan sebelum eksploitasi dimulai.",
-        mobileEvaluationContext: "Penyerang tidak memerlukan akun, otentikasi awal, atau hak akses istimewa apa pun pada komponen rentan.",
+        mobileEvaluationContext: "Contoh ilustratif: kerentanan dapat dipicu tanpa mensyaratkan akun pengguna, otentikasi awal, atau hak istimewa pada komponen target.",
         firstOfficialText: "Penyerang tidak terotentikasi dan tidak memerlukan hak akses atau izin akun apa pun pada komponen rentan sebelum eksploitasi dimulai."
       },
       {
         code: "L",
         label: "Low",
         badge: "L",
-        guidanceText: "Penyerang harus memiliki hak akses tingkat pengguna biasa (misalnya memiliki akun terdaftar atau hak otentikasi terbatas) pada komponen atau sistem yang rentan sebelum serangan dapat dipicu.",
-        mobileEvaluationContext: "Penyerang memerlukan otentikasi atau hak akses tingkat pengguna biasa pada aplikasi/komponen target. Catatan: Menginstal aplikasi biasa di perangkat tidak otomatis disamakan dengan hak akses Low pada komponen rentan jika komponen tersebut dapat diakses tanpa mensyaratkan otentikasi.",
-        firstOfficialText: "Penyerang harus memiliki hak akses tingkat pengguna biasa (misalnya memiliki akun terdaftar atau hak otentikasi terbatas) pada komponen atau sistem yang rentan sebelum serangan dapat dipicu."
+        guidanceText: "Penyerang harus memiliki hak otentikasi atau izin dasar tingkat pengguna biasa pada komponen rentan sebelum serangan dapat dilancarkan.",
+        mobileEvaluationContext: "Contoh ilustratif: penyerang harus login dengan akun pengguna biasa. Menginstal aplikasi biasa di perangkat Android tidak otomatis disamakan dengan hak akses Low pada komponen rentan jika komponen tersebut dapat diakses tanpa otentikasi.",
+        firstOfficialText: "Penyerang harus memiliki hak otentikasi atau izin dasar tingkat pengguna biasa pada komponen rentan sebelum serangan dapat dilancarkan."
       },
       {
         code: "H",
         label: "High",
         badge: "H",
-        guidanceText: "Penyerang memerlukan hak akses istimewa/administratif yang signifikan (seperti root sistem Android, device owner, atau administrator) sebelum melancarkan serangan.",
-        mobileEvaluationContext: "Penyerang harus memiliki hak istimewa tingkat tinggi (misal: hak root Android atau administrator backend) sebelum serangan dapat dilancarkan.",
-        firstOfficialText: "Penyerang memerlukan hak akses istimewa/administratif yang signifikan (seperti root sistem Android, device owner, atau administrator) sebelum melancarkan serangan."
+        guidanceText: "Penyerang memerlukan hak akses istimewa atau administratif signifikan (yang mengendalikan pengaturan tingkat sistem) sebelum serangan dapat dilancarkan.",
+        mobileEvaluationContext: "Contoh ilustratif: penyerang harus memiliki hak administratif sistem (seperti hak akses root Android, device owner, atau administrator server).",
+        firstOfficialText: "Penyerang memerlukan hak akses istimewa atau administratif signifikan (yang mengendalikan pengaturan tingkat sistem) sebelum serangan dapat dilancarkan."
       }
     ]
   },
@@ -107,17 +107,17 @@ export const CVSS_METRIC_DEFINITIONS: Record<keyof CVSSv31Metrics, MetricDefinit
         code: "N",
         label: "None",
         badge: "N",
-        guidanceText: "Kerentanan dapat dieksploitasi tanpa memerlukan interaksi atau tindakan apa pun dari pengguna sah target.",
-        mobileEvaluationContext: "Eksploitasi dapat berlangsung tanpa memerlukan tindakan apa pun dari pengguna sah selain penyerang.",
-        firstOfficialText: "Kerentanan dapat dieksploitasi tanpa memerlukan interaksi atau tindakan apa pun dari pengguna sah target."
+        guidanceText: "Kerentanan dapat dieksploitasi tanpa memerlukan interaksi atau tindakan aktif apa pun dari pengguna sah target.",
+        mobileEvaluationContext: "Contoh ilustratif: serangan dapat dipicu secara mandiri oleh penyerang tanpa keterlibatan pengguna sah.",
+        firstOfficialText: "Kerentanan dapat dieksploitasi tanpa memerlukan interaksi atau tindakan aktif apa pun dari pengguna sah target."
       },
       {
         code: "R",
         label: "Required",
         badge: "R",
-        guidanceText: "Keberhasilan eksploitasi mensyaratkan pengguna selain penyerang untuk melakukan tindakan aktif tertentu yang memicu kerentanan (misalnya mengklik tautan khusus atau membuka berkas berbahaya yang dikirimkan).",
-        mobileEvaluationContext: "Eksploitasi mensyaratkan pengguna target melakukan tindakan tertentu untuk memfasilitasi serangan. Catatan: Penggunaan rutin aplikasi secara normal oleh korban tidak otomatis berarti UI bernilai Required, kecuali serangan secara spesifik membutuhkan tindakan aktif dari korban untuk memicu payload.",
-        firstOfficialText: "Keberhasilan eksploitasi mensyaratkan pengguna selain penyerang untuk melakukan tindakan aktif tertentu yang memicu kerentanan."
+        guidanceText: "Keberhasilan eksploitasi mensyaratkan pengguna sah (selain penyerang) untuk melakukan tindakan aktif tertentu yang memicu kerentanan (misalnya membuka tautan jebakan, mengunduh berkas berbahaya, atau mengeksekusi aksi tertentu).",
+        mobileEvaluationContext: "Contoh ilustratif: pengguna harus diperdaya (rekayasa sosial) untuk memicu payload. Penggunaan rutin aplikasi secara normal oleh korban tidak otomatis berarti UI bernilai Required, kecuali serangan secara spesifik membutuhkan tindakan aktif dari korban untuk memicu kerentanan.",
+        firstOfficialText: "Keberhasilan eksploitasi mensyaratkan pengguna sah (selain penyerang) untuk melakukan tindakan aktif tertentu yang memicu kerentanan."
       }
     ]
   },
@@ -131,17 +131,17 @@ export const CVSS_METRIC_DEFINITIONS: Record<keyof CVSSv31Metrics, MetricDefinit
         code: "U",
         label: "Unchanged",
         badge: "U",
-        guidanceText: "Sumber daya yang terdampak dikelola oleh otoritas keamanan yang sama dengan komponen yang rentan.",
-        mobileEvaluationContext: "Dampak eksploitasi terbatas pada ruang lingkup aplikasi mobile itu sendiri (misalnya direktori penyimpanan sandbox aplikasi). Batas otoritas otorisasi keamanan tidak terlanggar.",
-        firstOfficialText: "Sumber daya yang terdampak dikelola oleh otoritas keamanan yang sama dengan komponen yang rentan."
+        guidanceText: "Dampak eksploitasi terbatas pada sumber daya yang dikelola oleh otoritas keamanan yang sama dengan komponen rentan. Batas otorisasi keamanan tidak terlanggar.",
+        mobileEvaluationContext: "Contoh ilustratif: dampak eksploitasi terbatas pada ruang lingkup aplikasi mobile itu sendiri (misalnya berkas dalam direktori sandbox aplikasi). Adanya server backend atau database tidak otomatis menjadikan Scope bernilai Changed jika komunikasi berlangsung dalam batas otorisasi normal.",
+        firstOfficialText: "Dampak eksploitasi terbatas pada sumber daya yang dikelola oleh otoritas keamanan yang sama dengan komponen rentan. Batas otorisasi keamanan tidak terlanggar."
       },
       {
         code: "C",
         label: "Changed",
         badge: "C",
-        guidanceText: "Eksploitasi memungkinkan penyerang memengaruhi sumber daya yang berada di luar batas otoritas keamanan komponen rentan.",
-        mobileEvaluationContext: "Dampak eksploitasi melampaui otoritas keamanan aplikasi mobile, memengaruhi komponen lain seperti sistem operasi, aplikasi terpisah lain, atau layanan backend jika batas otorisasi keamanannya dilanggar secara langsung. Catatan: Keberadaan backend tidak otomatis menjadikan Scope bernilai Changed jika komunikasi berlangsung dalam batas otorisasi normal.",
-        firstOfficialText: "Eksploitasi memungkinkan penyerang memengaruhi sumber daya yang berada di luar batas otoritas keamanan komponen rentan."
+        guidanceText: "Eksploitasi memungkinkan penyerang memengaruhi sumber daya pada komponen lain yang dikelola oleh otoritas keamanan berbeda dari komponen rentan (terjadi pelanggaran batas otorisasi).",
+        mobileEvaluationContext: "Contoh ilustratif: kerentanan pada aplikasi memungkinkan penyerang memperoleh hak akses atau mengeksekusi tindakan pada sistem operasi Android atau layanan backend di luar batas otorisasi aplikasi.",
+        firstOfficialText: "Eksploitasi memungkinkan penyerang memengaruhi sumber daya pada komponen lain yang dikelola oleh otoritas keamanan berbeda dari komponen rentan (terjadi pelanggaran batas otorisasi)."
       }
     ]
   },
@@ -156,24 +156,24 @@ export const CVSS_METRIC_DEFINITIONS: Record<keyof CVSSv31Metrics, MetricDefinit
         label: "None",
         badge: "N",
         guidanceText: "Tidak ada pengungkapan informasi rahasia atau data sensitif pada komponen yang terdampak.",
-        mobileEvaluationContext: "Tidak ada data sensitif yang terungkap kepada pihak tidak berhak.",
+        mobileEvaluationContext: "Contoh ilustratif: tidak ada data rahasia atau data terbatas yang bocor kepada penyerang.",
         firstOfficialText: "Tidak ada pengungkapan informasi rahasia atau data sensitif pada komponen yang terdampak."
       },
       {
         code: "L",
         label: "Low",
         badge: "L",
-        guidanceText: "Terjadi pengungkapan sebagian informasi rahasia, atau informasi yang bocor memiliki dampak terbatas dan penyerang tidak memiliki kendali penuh atas seluruh data yang diungkapkan.",
-        mobileEvaluationContext: "Terjadi pengungkapan sebagian informasi atau data dengan dampak terbatas (misal: metadata sistem, residu string biner, atau informasi terbatas).",
-        firstOfficialText: "Terjadi pengungkapan sebagian informasi rahasia, atau informasi yang bocor memiliki dampak terbatas."
+        guidanceText: "Terjadi kehilangan kerahasiaan sebagian. Penyerang memperoleh akses ke sebagian data terbatas, namun pengungkapan tersebut tidak menimbulkan dampak langsung yang serius terhadap komponen terdampak.",
+        mobileEvaluationContext: "Contoh ilustratif: pengungkapan informasi terbatas atau data yang konsekuensi langsungnya tidak kritis. Keberadaan data pribadi (PII), token, hash kata sandi, atau residu string biner tidak otomatis bernilai Low atau High, melainkan dinilai berdasarkan tingkat sensitivitas dan konsekuensinya.",
+        firstOfficialText: "Terjadi kehilangan kerahasiaan sebagian. Penyerang memperoleh akses ke sebagian data terbatas, namun pengungkapan tersebut tidak menimbulkan dampak langsung yang serius terhadap komponen terdampak."
       },
       {
         code: "H",
         label: "High",
         badge: "H",
-        guidanceText: "Terjadi pengungkapan menyeluruh terhadap seluruh data rahasia, atau pengungkapan langsung terhadap informasi sangat kritis yang berdampak pada kompromi menyeluruh.",
-        mobileEvaluationContext: "Terjadi pengungkapan menyeluruh atau terungkapnya informasi sangat kritis yang berdampak langsung pada kompromi luas. Catatan: Keberadaan data pribadi (PII), hash, atau token tidak otomatis bernilai High; evaluator perlu menilai tingkat keluasan dan konsekuensi nyata dari pengungkapan tersebut.",
-        firstOfficialText: "Terjadi pengungkapan menyeluruh terhadap seluruh data rahasia, atau pengungkapan langsung terhadap informasi sangat kritis."
+        guidanceText: "Terjadi kehilangan kerahasiaan total (seluruh data rahasia terungkap), ATAU terjadi pengungkapan sebagian informasi terbatas yang diketahui menimbulkan konsekuensi langsung dan serius terhadap komponen terdampak.",
+        mobileEvaluationContext: "Contoh ilustratif: seluruh data rahasia terbongkar, atau sebagian data kunci terungkap yang secara langsung memungkinkan pengambilalihan akun atau kompromi serius. High tidak mensyaratkan kebocoran seluruh data jika informasi yang bocor memiliki konsekuensi kritis langsung.",
+        firstOfficialText: "Terjadi kehilangan kerahasiaan total (seluruh data rahasia terungkap), ATAU terjadi pengungkapan sebagian informasi terbatas yang diketahui menimbulkan konsekuensi langsung dan serius terhadap komponen terdampak."
       }
     ]
   },
@@ -188,24 +188,24 @@ export const CVSS_METRIC_DEFINITIONS: Record<keyof CVSSv31Metrics, MetricDefinit
         label: "None",
         badge: "N",
         guidanceText: "Tidak ada modifikasi data atau konfigurasi yang tidak sah pada komponen yang terdampak.",
-        mobileEvaluationContext: "Data, berkas, konfigurasi, dan alur eksekusi aplikasi tidak dapat dimodifikasi oleh penyerang.",
+        mobileEvaluationContext: "Contoh ilustratif: data, alur eksekusi, dan konfigurasi sistem tidak dapat diubah oleh penyerang.",
         firstOfficialText: "Tidak ada modifikasi data atau konfigurasi yang tidak sah pada komponen yang terdampak."
       },
       {
         code: "L",
         label: "Low",
         badge: "L",
-        guidanceText: "Modifikasi data dimungkinkan, namun cakupan modifikasi terbatas dan tidak berakibat langsung pada kompromi integritas sistem secara luas.",
-        mobileEvaluationContext: "Penyerang dapat mengubah sebagian data atau pengaturan non-kritis, namun tidak memiliki kendali penuh atas konsekuensi modifikasi tersebut.",
-        firstOfficialText: "Modifikasi data dimungkinkan, namun cakupan modifikasi terbatas."
+        guidanceText: "Modifikasi data dimungkinkan, namun penyerang tidak memiliki kendali penuh atas konsekuensinya, atau perubahan data tersebut tidak menimbulkan dampak langsung yang serius terhadap keandalan sistem.",
+        mobileEvaluationContext: "Contoh ilustratif: penyerang dapat mengubah data non-kritis atau modifikasi parsial yang konsekuensi operasionalnya terbatas. Modifikasi sejumlah data tidak otomatis bernilai High jika tidak menimbulkan kompromi serius.",
+        firstOfficialText: "Modifikasi data dimungkinkan, namun penyerang tidak memiliki kendali penuh atas konsekuensinya, atau perubahan data tersebut tidak menimbulkan dampak langsung yang serius terhadap keandalan sistem."
       },
       {
         code: "H",
         label: "High",
         badge: "H",
-        guidanceText: "Terjadi kompromi integritas total atau modifikasi langsung pada data/fungsi kritis yang berdampak serius pada keandalan operasional sistem.",
-        mobileEvaluationContext: "Terjadi kompromi integritas menyeluruh atau modifikasi data penting yang menimbulkan dampak serius langsung. Catatan: High membutuhkan konsekuensi langsung yang serius atau kompromi integritas luas, bukan sekadar perubahan data apa pun.",
-        firstOfficialText: "Terjadi kompromi integritas total atau modifikasi langsung pada data/fungsi kritis."
+        guidanceText: "Terjadi kehilangan integritas total (semua data dapat dimodifikasi tanpa hak), ATAU modifikasi sebagian data/fungsi yang menimbulkan konsekuensi langsung dan serius terhadap komponen terdampak.",
+        mobileEvaluationContext: "Contoh ilustratif: penyerang dapat mengubah data penting atau memanipulasi logika aplikasi yang berakibat langsung pada kompromi sistem yang luas. Penilaian High didasarkan pada keseriusan konsekuensi langsung, bukan semata-mata kuantitas data yang diubah.",
+        firstOfficialText: "Terjadi kehilangan integritas total (semua data dapat dimodifikasi tanpa hak), ATAU modifikasi sebagian data/fungsi yang menimbulkan konsekuensi langsung dan serius terhadap komponen terdampak."
       }
     ]
   },
@@ -219,25 +219,25 @@ export const CVSS_METRIC_DEFINITIONS: Record<keyof CVSSv31Metrics, MetricDefinit
         code: "N",
         label: "None",
         badge: "N",
-        guidanceText: "Tidak ada dampak terhadap ketersediaan layanan atau sumber daya.",
-        mobileEvaluationContext: "Ketersediaan dan responsivitas aplikasi/layanan tetap berjalan normal tanpa gangguan.",
-        firstOfficialText: "Tidak ada dampak terhadap ketersediaan layanan atau sumber daya."
+        guidanceText: "Tidak ada dampak terhadap ketersediaan layanan atau sumber daya pada komponen terdampak.",
+        mobileEvaluationContext: "Contoh ilustratif: fungsi dan responsivitas aplikasi tetap beroperasi secara normal.",
+        firstOfficialText: "Tidak ada dampak terhadap ketersediaan layanan atau sumber daya pada komponen terdampak."
       },
       {
         code: "L",
         label: "Low",
         badge: "L",
-        guidanceText: "Terjadi penurunan kinerja sementara atau gangguan akses parsial tanpa penghentian layanan secara menyeluruh.",
-        mobileEvaluationContext: "Terjadi kelambatan respons, degradasi performa, atau gangguan parsial tanpa pemadaman total.",
-        firstOfficialText: "Terjadi penurunan kinerja sementara atau gangguan akses parsial tanpa penghentian layanan secara menyeluruh."
+        guidanceText: "Terjadi penurunan performa atau gangguan akses berkala, namun sumber daya tetap dapat diakses sebagian dan tidak menimbulkan konsekuensi langsung yang serius.",
+        mobileEvaluationContext: "Contoh ilustratif: perlambatan sementara atau gangguan parsial tanpa pemadaman layanan. Tidak mengakibatkan kegagalan operasional yang serius.",
+        firstOfficialText: "Terjadi penurunan performa atau gangguan akses berkala, namun sumber daya tetap dapat diakses sebagian dan tidak menimbulkan konsekuensi langsung yang serius."
       },
       {
         code: "H",
         label: "High",
         badge: "H",
-        guidanceText: "Terjadi penghentian layanan secara total (Denial of Service) atau gangguan serius yang berlangsung terus-menerus selama serangan berjalan sehingga sumber daya tidak dapat diakses pengguna sah.",
-        mobileEvaluationContext: "Terjadi penghentian layanan total atau penolakan akses berkelanjutan terhadap sumber daya utama. Catatan: High tidak harus berupa crash permanen; gangguan serius yang berlangsung selama eksploitasi juga dipertimbangkan sebagai High.",
-        firstOfficialText: "Terjadi penghentian layanan secara total (Denial of Service) atau gangguan serius yang berlangsung terus-menerus."
+        guidanceText: "Terjadi penolakan akses total (Denial of Service) baik yang bersifat persisten maupun terus-menerus selama serangan berlangsung, ATAU gangguan ketersediaan parsial yang menimbulkan konsekuensi langsung dan serius terhadap komponen terdampak.",
+        mobileEvaluationContext: "Contoh ilustratif: aplikasi crash sepenuhnya, layanan lumpuh total, atau gangguan serius yang membuat fungsi utama tidak dapat digunakan selama eksploitasi. High tidak harus berupa crash permanen; pemadaman serius selama serangan berjalan dapat dinilai High.",
+        firstOfficialText: "Terjadi penolakan akses total (Denial of Service) baik yang bersifat persisten maupun terus-menerus selama serangan berlangsung, ATAU gangguan ketersediaan parsial yang menimbulkan konsekuensi langsung dan serius terhadap komponen terdampak."
       }
     ]
   }

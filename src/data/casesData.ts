@@ -191,7 +191,7 @@ user_auth_vault_token`
       masweTitle: "Cleartext Communication Allowed"
     },
     findingTitle: "Konfigurasi Manifes Mengizinkan Lalu Lintas Cleartext (android:usesCleartextTraffic='true')",
-    rootCause: "Pada berkas AndroidManifest.xml, pengembang secara eksplisit mendeklarasikan atribut android:usesCleartextTraffic='true' pada elemen <application> dan tidak menyertakan konfigurasi pembatasan domain melalui Network Security Configuration. Pengujian dinamis lalu lintas jaringan (MASTG-TEST-0218 dan MASTG-TEST-0233) menunjukkan bahwa komunikasi utama aplikasi saat ini telah berjalan di atas HTTPS (TLS 1.3) dan tidak teramati adanya transmisi HTTP aktif. Namun, deklarasi usesCleartextTraffic='true' ini secara arsitektur menonaktifkan proteksi default platform Android (yang secara baku memblokir lalu lintas HTTP sejak Android 9). Hal ini menjadi potensi celah di masa mendatang apabila terdapat penambahan fitur, modul pustaka pihak ketiga, atau pemanggilan URL HTTP tanpa enkripsi.",
+    rootCause: "Fakta Pengujian (SAST): Pada berkas AndroidManifest.xml, pengembang secara eksplisit mendeklarasikan atribut android:usesCleartextTraffic='true' pada elemen <application> dan tidak menyertakan konfigurasi pembatasan domain melalui Network Security Configuration. Fakta Pengujian (DAST): Pengujian dinamis lalu lintas jaringan (MASTG-TEST-0218 dan MASTG-TEST-0233) membuktikan bahwa seluruh komunikasi aplikasi yang teramati saat ini telah terenkripsi menggunakan HTTPS (TLS 1.3), dan tidak ditemukan adanya transmisi data melalui HTTP tanpa enkripsi. Prasyarat Eksploitasi: Diperlukan penyerang yang berada pada jalur jaringan bersama (serangan MitM) serta adanya pemanggilan URL HTTP tanpa enkripsi oleh fitur tambahan atau pustaka pihak ketiga di masa mendatang. Konsekuensi Potensial: Deklarasi permisif ini menonaktifkan proteksi baku platform Android (yang secara default memblokir lalu lintas HTTP sejak Android 9), sehingga apabila di kemudian hari terdapat lalu lintas HTTP, transmisi tersebut tidak akan diblokir oleh platform dan berpotensi disadap atau dimanipulasi.",
     stepByStepReproduction: [
       {
         stepNumber: 1,
@@ -207,9 +207,9 @@ user_auth_vault_token`
       }
     ],
     operationalImpact: {
-      threatActor: "Penyerang Man-in-the-Middle (MitM) yang berada pada jaringan nirkabel lokal yang sama (misal Wi-Fi publik tanpa proteksi).",
-      prerequisites: "Pengguna terhubung ke Wi-Fi publik bersama penyerang, dan terdapat pemanggilan endpoint HTTP tanpa enkripsi oleh aplikasi atau pustaka dependensi.",
-      consequences: "Karena platform Android diizinkan melewatkan lalu lintas teks biasa oleh konfigurasi aplikasi, paket data pada komunikasi HTTP yang tidak terenkripsi rentan disadap atau dimanipulasi melalui serangan MitM. (Catatan: Pengujian lalu lintas dinamis saat ini membuktikan komunikasi utama terenkripsi TLS 1.3, sehingga temuan ini merupakan kelemahan konfigurasi permisif / risiko arsitektural)."
+      threatActor: "Penyerang Man-in-the-Middle (MitM) yang berada pada jalur jaringan yang sama (misalnya jaringan nirkabel lokal tanpa proteksi).",
+      prerequisites: "Pengguna terhubung ke jaringan bersama penyerang DAN aplikasi atau pustaka dependensi melakukan pemanggilan endpoint HTTP tanpa enkripsi (tidak teramati pada pengujian dinamis saat ini).",
+      consequences: "Konsekuensi Potensial: Karena konfigurasi aplikasi mengizinkan lalu lintas teks biasa, setiap transmisi HTTP yang terjadi di masa mendatang tidak akan dicegah oleh platform Android dan rentan terhadap penyadapan atau manipulasi MitM. Temuan ini merupakan kelemahan konfigurasi permisif (risiko arsitektural), bukan temuan kebocoran lalu lintas aktif."
     },
     evidenceSnippets: [
       {
