@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import type {
   TestCaseDossier,
   ReviewerProfile,
@@ -27,7 +27,7 @@ interface ReviewWorkspaceProps {
   cases: TestCaseDossier[];
   currentCaseIndex: number;
   onCaseChange: (index: number) => void;
-  onFinishAllCases: () => void;
+  onPostSaveAdvance: () => void;
   onRefreshCompleted: () => void;
   onOpenGuide: () => void;
   onDirtyChange?: (isDirty: boolean) => void;
@@ -49,7 +49,7 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
   cases,
   currentCaseIndex,
   onCaseChange,
-  onFinishAllCases,
+  onPostSaveAdvance,
   onRefreshCompleted,
   onOpenGuide,
   onDirtyChange
@@ -70,14 +70,29 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
   );
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAutoAdvancing, setIsAutoAdvancing] = useState(false);
+  const [isSavedSuccessfully, setIsSavedSuccessfully] = useState(false);
   const [saveStatus, setSaveStatus] = useState<{
     type: "success" | "warning";
     message: string;
     canProceedAnyway?: boolean;
   } | null>(null);
 
+  const isSubmittingRef = useRef(false);
+  const hasNavigatedRef = useRef(false);
+  const autoAdvanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (autoAdvanceTimerRef.current) {
+        clearTimeout(autoAdvanceTimerRef.current);
+      }
+    };
+  }, []);
+
   // Deteksi perubahan yang belum disimpan (form dirty state)
   const isFormDirty = useMemo(() => {
+    if (isSavedSuccessfully) return false;
     const metricKeys: (keyof CVSSv31Metrics)[] = ["AV", "AC", "PR", "UI", "S", "C", "I", "A"];
     const hasMetricChanged = metricKeys.some(
       k => metrics[k] !== (existingSubmission ? existingSubmission.metrics[k] : null)
@@ -85,7 +100,7 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
     const hasJustificationChanged =
       justification.trim() !== (existingSubmission?.justification || "").trim();
     return hasMetricChanged || hasJustificationChanged;
-  }, [metrics, justification, existingSubmission]);
+  }, [metrics, justification, existingSubmission, isSavedSuccessfully]);
 
   useEffect(() => {
     onDirtyChange?.(isFormDirty);
@@ -96,6 +111,7 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
   const isReadyToSubmit = calculationResult.isComplete && isJustificationFilled;
 
   const handleMetricChange = (metricKey: keyof CVSSv31Metrics, value: any) => {
+    if (isSavedSuccessfully) setIsSavedSuccessfully(false);
     setMetrics(prev => ({
       ...prev,
       [metricKey]: value
@@ -108,8 +124,9 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
   };
 
   const handleConfirmSave = async () => {
-    if (!isReadyToSubmit) return;
+    if (!isReadyToSubmit || isSubmittingRef.current || hasNavigatedRef.current) return;
 
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
     const submission: CaseEvaluationSubmission = {
       id: `v2_${currentCase.caseId}_${encodeURIComponent(reviewer.name.trim().toLowerCase())}`,
@@ -133,40 +150,62 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
       submittedAt: new Date().toISOString()
     };
 
-    const res = await saveSubmission(submission);
-    setIsSubmitting(false);
-    setIsModalOpen(false);
-    onRefreshCompleted();
+    try {
+      const res = await saveSubmission(submission);
+      setIsSubmitting(false);
+      isSubmittingRef.current = false;
+      setIsModalOpen(false);
+      onRefreshCompleted();
 
-    if (res.cloudSynced) {
-      onDirtyChange?.(false);
-      setSaveStatus({
-        type: "success",
-        message: "Penilaian berhasil dikirim dan tersimpan di server."
-      });
+      if (res.cloudSynced) {
+        setIsSavedSuccessfully(true);
+        setIsAutoAdvancing(true);
+        onDirtyChange?.(false);
+        setSaveStatus({
+          type: "success",
+          message: "Penilaian berhasil dikirim dan tersimpan di server."
+        });
 
-      setTimeout(() => {
-        if (currentCaseIndex < cases.length - 1) {
-          onCaseChange(currentCaseIndex + 1);
-        } else {
-          onFinishAllCases();
+        if (autoAdvanceTimerRef.current) {
+          clearTimeout(autoAdvanceTimerRef.current);
         }
-      }, 1000);
-    } else {
+        autoAdvanceTimerRef.current = setTimeout(() => {
+          if (!hasNavigatedRef.current) {
+            hasNavigatedRef.current = true;
+            onPostSaveAdvance();
+          }
+        }, 1000);
+      } else {
+        // D1 gagal atau belum sinkron: data telah aman di localStorage, tampilkan opsi lanjut atau retry
+        setSaveStatus({
+          type: "warning",
+          message: res.message,
+          canProceedAnyway: true
+        });
+      }
+    } catch (err: any) {
+      setIsSubmitting(false);
+      isSubmittingRef.current = false;
+      setIsModalOpen(false);
       setSaveStatus({
         type: "warning",
-        message: res.message,
+        message: `Gagal menyimpan: ${err?.message || "Terjadi gangguan koneksi"}`,
         canProceedAnyway: true
       });
     }
   };
 
   const handleProceedManually = () => {
+    if (autoAdvanceTimerRef.current) {
+      clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = null;
+    }
+    setIsSavedSuccessfully(true);
+    setIsAutoAdvancing(true);
     onDirtyChange?.(false);
-    if (currentCaseIndex < cases.length - 1) {
-      onCaseChange(currentCaseIndex + 1);
-    } else {
-      onFinishAllCases();
+    if (!hasNavigatedRef.current) {
+      hasNavigatedRef.current = true;
+      onPostSaveAdvance();
     }
   };
 
@@ -252,7 +291,10 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
                 rows={4}
                 placeholder="Jelaskan alasan penentuan nilai metrik di atas berdasarkan bukti pengujian (misal pertimbangan vektor serangan, prasyarat akses, atau cakupan dampak terhadap data)..."
                 value={justification}
-                onChange={e => setJustification(e.target.value)}
+                onChange={e => {
+                  if (isSavedSuccessfully) setIsSavedSuccessfully(false);
+                  setJustification(e.target.value);
+                }}
               />
             </div>
 
@@ -274,7 +316,7 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
                 type="button"
                 className="btn-nav-prev"
                 onClick={() => onCaseChange(currentCaseIndex - 1)}
-                disabled={currentCaseIndex === 0}
+                disabled={currentCaseIndex === 0 || isSubmitting || isAutoAdvancing}
               >
                 <ChevronLeft size={16} />
                 <span>Kembali</span>
@@ -284,7 +326,7 @@ export const ReviewWorkspace: React.FC<ReviewWorkspaceProps> = ({
                 type="button"
                 className={`btn-nav-submit ${isReadyToSubmit ? "ready" : "disabled"}`}
                 onClick={handleOpenConfirm}
-                disabled={!isReadyToSubmit}
+                disabled={!isReadyToSubmit || isSubmitting || isAutoAdvancing}
               >
                 {currentCaseIndex === cases.length - 1 ? (
                   <>

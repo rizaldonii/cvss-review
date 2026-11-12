@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import type { ReviewerProfile } from "./types";
 import { SANITIZED_TEST_CASES } from "./data/casesData";
 import {
@@ -21,19 +21,23 @@ export const App: React.FC = () => {
   const [currentCaseIndex, setCurrentCaseIndex] = useState(0);
   const [isFinished, setIsFinished] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
-  const [isFormDirty, setIsFormDirty] = useState(false);
+  const isFormDirtyRef = useRef(false);
+
+  const setIsFormDirty = useCallback((dirty: boolean) => {
+    isFormDirtyRef.current = dirty;
+  }, []);
 
   // Peringatan jika tab ditutup / refresh saat ada perubahan form yang belum disimpan
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isFormDirty) {
+      if (isFormDirtyRef.current) {
         e.preventDefault();
         e.returnValue = "";
       }
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [isFormDirty]);
+  }, []);
   const [completedCaseIds, setCompletedCaseIds] = useState<string[]>(() => {
     const saved = getReviewerProfile();
     if (!saved) return [];
@@ -103,7 +107,7 @@ export const App: React.FC = () => {
   };
 
   const handleLogout = () => {
-    if (isFormDirty) {
+    if (isFormDirtyRef.current) {
       const confirmLeave = window.confirm(
         "Perubahan penilaian pada kasus ini belum disimpan. Apakah Anda yakin ingin keluar? Perubahan yang belum disimpan akan hilang."
       );
@@ -112,32 +116,44 @@ export const App: React.FC = () => {
       return;
     }
 
+    setIsFormDirty(false);
     clearReviewerProfile();
     setReviewer(null);
     setIsFinished(false);
     setCurrentCaseIndex(0);
-    setIsFormDirty(false);
   };
 
-  const handleCaseChange = (index: number) => {
+  // Navigasi manual yang dipicu pengguna (Navbar tab, tombol Kembali)
+  const handleCaseChange = useCallback((index: number) => {
     if (index === currentCaseIndex) return;
 
-    if (isFormDirty) {
+    if (isFormDirtyRef.current) {
       const confirmLeave = window.confirm(
         "Perubahan penilaian pada kasus ini belum disimpan. Apakah Anda yakin ingin berpindah kasus? Perubahan yang belum disimpan akan hilang."
       );
       if (!confirmLeave) return;
     }
 
+    setIsFormDirty(false);
     if (index >= 0 && index < SANITIZED_TEST_CASES.length) {
       setCurrentCaseIndex(index);
       setIsFinished(false);
-      setIsFormDirty(false);
     }
-  };
+  }, [currentCaseIndex, setIsFormDirty]);
+
+  // Navigasi eksplisit setelah penyimpanan berhasil atau lanjut lokal (tanpa konfirmasi form dirty)
+  const handlePostSaveAdvance = useCallback(() => {
+    setIsFormDirty(false);
+    if (currentCaseIndex < SANITIZED_TEST_CASES.length - 1) {
+      setCurrentCaseIndex(prev => prev + 1);
+      setIsFinished(false);
+    } else {
+      setIsFinished(true);
+    }
+  }, [currentCaseIndex, setIsFormDirty]);
 
   const handleOpenAdmin = () => {
-    if (isFormDirty) {
+    if (isFormDirtyRef.current) {
       const confirmLeave = window.confirm(
         "Perubahan penilaian pada kasus ini belum disimpan. Apakah Anda yakin ingin membuka halaman rekap admin? Perubahan yang belum disimpan akan hilang."
       );
@@ -145,11 +161,6 @@ export const App: React.FC = () => {
     }
     setIsFormDirty(false);
     navigateTo("/admin");
-  };
-
-  const handleFinishAllCases = () => {
-    setIsFormDirty(false);
-    setIsFinished(true);
   };
 
   // If user visits /admin or /admin/
@@ -201,7 +212,7 @@ export const App: React.FC = () => {
             cases={SANITIZED_TEST_CASES}
             currentCaseIndex={currentCaseIndex}
             onCaseChange={handleCaseChange}
-            onFinishAllCases={handleFinishAllCases}
+            onPostSaveAdvance={handlePostSaveAdvance}
             onRefreshCompleted={() => refreshCompletedCases()}
             onOpenGuide={() => setIsGuideOpen(true)}
             onDirtyChange={setIsFormDirty}

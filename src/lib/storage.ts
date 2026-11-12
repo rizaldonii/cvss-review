@@ -387,13 +387,13 @@ export async function saveSubmission(
       };
     }
 
+    const serverErr = data.error || data.message;
     return {
       success: false,
       cloudSynced: false,
-      message:
-        data.message ||
-        data.error ||
-        "Tersimpan di perangkat ini, namun belum terkirim ke server database."
+      message: serverErr
+        ? `Tersimpan di perangkat ini, namun server melaporkan galat: ${serverErr}`
+        : "Tersimpan di perangkat ini, namun belum terkirim ke server database."
     };
   } catch (err: any) {
     return {
