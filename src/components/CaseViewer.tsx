@@ -59,9 +59,21 @@ export const CaseViewer: React.FC<CaseViewerProps> = ({
         </div>
         <div className="taxonomy-item">
           <span className="taxonomy-label">Taksonomi OWASP MASWE:</span>
-          <span className="taxonomy-val">
-            <strong>{testCase.weaknessTaxonomy.masweId}</strong>: {testCase.weaknessTaxonomy.masweTitle}
-          </span>
+          {testCase.weaknessTaxonomy.masweUrl ? (
+            <a
+              href={testCase.weaknessTaxonomy.masweUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="taxonomy-link"
+            >
+              <strong>{testCase.weaknessTaxonomy.masweId}</strong>: {testCase.weaknessTaxonomy.masweTitle}
+              <ExternalLink size={12} className="link-icon" />
+            </a>
+          ) : (
+            <span className="taxonomy-val">
+              <strong>{testCase.weaknessTaxonomy.masweId}</strong>: {testCase.weaknessTaxonomy.masweTitle}
+            </span>
+          )}
         </div>
       </div>
 

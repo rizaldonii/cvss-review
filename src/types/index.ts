@@ -78,6 +78,7 @@ export interface TestCaseDossier {
     cweTitle: string;
     masweId: string;
     masweTitle: string;
+    masweUrl?: string;
   };
   findingTitle: string;
   rootCause: string;
