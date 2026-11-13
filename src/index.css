@@ -381,6 +381,24 @@ code, pre {
   gap: 0.35rem;
 }
 
+ol.banner-list {
+  list-style-type: decimal;
+}
+
+ol.banner-list li {
+  display: list-item;
+  line-height: 1.45;
+}
+
+.banner-note {
+  margin-top: 0.75rem;
+  padding-top: 0.65rem;
+  border-top: 1px dashed var(--primary-blue-border);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
 .banner-action-row {
   margin-top: 0.75rem;
   display: flex;

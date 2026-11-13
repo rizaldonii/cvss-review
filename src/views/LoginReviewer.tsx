@@ -106,19 +106,20 @@ export const LoginReviewer: React.FC<LoginReviewerProps> = ({ onStart, onOpenGui
 
         <div className="info-banner-box">
           <div className="banner-title-row">
-            <span className="banner-title">Sebelum mulai</span>
+            <span className="banner-title">Panduan Penggunaan Website</span>
           </div>
-          <ul className="banner-list">
-            <li>
-              Terdapat <strong>empat kelompok kerentanan</strong> (tiga pada Aplikasi Mahasiswa dan satu pada Aplikasi Orang Tua).
-            </li>
-            <li>
-              Setiap kasus dilengkapi deskripsi temuan, langkah pengujian, hasil pengamatan, serta tangkapan layar pendukung.
-            </li>
-            <li>
-              Klik tombol <strong>Penjelasan</strong> pada setiap baris metrik untuk membaca definisi resmi FIRST dan konteks pengujian mobile.
-            </li>
-          </ul>
+          <ol className="banner-list">
+            <li>Masukkan nama lengkap dan identitas/instansi penilai.</li>
+            <li>Baca deskripsi kasus, langkah pengujian, dan bukti kerentanan yang tersedia.</li>
+            <li>Pilih delapan metrik CVSS v3.1 berdasarkan analisis pribadi, lalu tuliskan alasan penilaian.</li>
+            <li>Klik &quot;Simpan dan Lanjut&quot;, periksa jawaban pada jendela konfirmasi, lalu simpan. Ulangi hingga keempat kasus selesai.</li>
+          </ol>
+
+          <div className="banner-note">
+            <span>
+              Gunakan <strong>Panduan CVSS v3.1</strong> apabila memerlukan penjelasan metrik. Penilaian yang telah disimpan dapat ditinjau kembali dengan menggunakan nama yang sama.
+            </span>
+          </div>
 
           <div className="banner-action-row">
             <button
@@ -127,7 +128,7 @@ export const LoginReviewer: React.FC<LoginReviewerProps> = ({ onStart, onOpenGui
               onClick={onOpenGuide}
             >
               <BookOpen size={14} />
-              <span>Panduan CVSS v3.1</span>
+              <span>Buka Panduan CVSS v3.1</span>
             </button>
           </div>
         </div>
