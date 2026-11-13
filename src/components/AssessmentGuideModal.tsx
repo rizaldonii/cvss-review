@@ -58,12 +58,6 @@ export const AssessmentGuideModal: React.FC<AssessmentGuideModalProps> = ({
               <li>
                 <strong>Konsekuensi Wajar Sesuai FIRST:</strong> Penilaian tidak boleh mengarang dampak yang tidak berdasar, tetapi dapat mempertimbangkan konsekuensi eksploitasi yang wajar, didukung bukti teknis, dan sesuai dengan panduan resmi FIRST CVSS v3.1. Sesuai prinsip FIRST, tidak semua konsekuensi harus dibuktikan melalui eksploitasi aktual yang destruktif, asalkan konsekuensi tersebut merupakan dampak logis yang terbukti potensial.
               </li>
-              <li>
-                <strong>Konteks Android Bersifat Ilustratif:</strong> Seluruh contoh konteks pengujian mobile disajikan murni sebagai ilustrasi komparatif, <strong>bukan petunjuk untuk mengarahkan pilihan nilai tertentu</strong>. Penilai menentukan nilai metrik secara mandiri dan independen.
-              </li>
-              <li>
-                <strong>Penanganan Bukti Gabungan (CASE-02 &amp; CASE-04):</strong> Pada kasus kebocoran informasi melalui logging, bukti DAST (runtime logcat) dan SAST (residu string biner) disajikan bersama sebagai bukti pendukung untuk <strong>satu penilaian CVSS terintegrasi</strong>.
-              </li>
             </ul>
           </section>
 
